@@ -116,12 +116,12 @@ details[open]>summary{margin-bottom:12px}
 <section class="card" id="addPanel" style="margin:0 0 14px" hidden>
   <h2>加入或移除股票</h2>
   <div class="row" style="margin-top:0;align-items:end">
-    <label style="flex:1;min-width:160px">股票代號（上市股票）<input id="addCode" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="例如 2317"></label>
+    <label style="flex:1;min-width:160px">股票代號（上市、上櫃）<input id="addCode" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="例如 2317"></label>
     <button id="addBtn">加入</button>
   </div>
   <p class="note" id="addMsg" aria-live="polite"></p>
   <div id="manage" style="margin-top:10px"></div>
-  <p class="note">加入後，網頁會直接向證交所抓近 3 個月的股價和本益比，大約要 20 秒；之後每次打開網頁都會自動補上新的交易日。自己加的股票目前只有「每日操作」。選好的股票只存在這支手機裡。</p>
+  <p class="note">加入後會抓近 3 個月的股價和本益比：上櫃股票幾秒鐘就好；上市股票要直接向證交所抓，大約 20 秒。之後每次打開網頁都會自動補上新的交易日（上櫃股票在每天 15:30、19:00 更新）。自己加的股票目前只有「每日操作」。選好的股票只存在這支手機裡。</p>
   <div class="row"><button class="ghost" id="addClose">收起來</button></div>
 </section>
 <div class="tabs" role="tablist">
@@ -717,6 +717,14 @@ async function fetchBars(c,y,m){const j=await twse(`STOCK_DAY?date=${ymd(y,m)}&s
   return{name,bars:j.data.map(r=>{const cl=numv(r[iC]);return cl?{d:rocIso(r[iD]),o:numv(r[iO])||cl,h:numv(r[iH])||cl,l:numv(r[iL])||cl,c:cl}:null}).filter(b=>b&&b.d)};}
 async function fetchPE(c,y,m){const j=await twse(`BWIBBU?date=${ymd(y,m)}&stockNo=${c}`);if(!j||j.stat!=='OK'||!j.data)return[];
   const f=j.fields||[],iD=f.indexOf('日期'),iP=f.indexOf('本益比');return j.data.map(r=>({d:rocIso(r[iD]),pe:numv(r[iP])})).filter(x=>x.d&&x.pe>0);}
+// 上櫃：櫃買中心不允許網頁直接讀，改讀 GitHub 每天代抓的 otc/年-月.json（見 scripts/update.py）
+const otcCache={},hourTag=()=>Math.floor(Date.now()/36e5);
+function otcFile(f){if(!(f in otcCache))otcCache[f]=fetch(`otc/${f}?t=${hourTag()}`).then(r=>r.ok?r.json():null).catch(()=>null);return otcCache[f];}
+const otcHist=()=>otcFile('pe-hist.json');
+async function fetchOtc(c){let name=null;const bars=[],pes=[];
+  for(const[y,m]of monthsBack(3).reverse()){const ym=`${y}-${String(m).padStart(2,'0')}`,j=await otcFile(ym+'.json');if(!j||!j.s||!j.s[c])continue;name=j.n[c];
+    j.s[c].forEach(([dd,o,h,l,cl,pe])=>{const d=`${ym}-${String(dd).padStart(2,'0')}`;bars.push({d,o,h,l,c:cl});if(pe>0)pes.push({d,pe});});}
+  return{name,bars,pes};}
 function mergeBars(x,bars){const map=new Map(x.bars.map(b=>[b.d,b]));bars.forEach(b=>map.set(b.d,b));x.bars=[...map.values()].sort((a,z)=>a.d<z.d?-1:1).slice(-400);}
 // 近四季 EPS = 同一天的收盤 ÷ 本益比（用最新一天兩者都有的資料）
 function epsFrom(bars,pes){const cl=new Map(bars.map(b=>[b.d,b.c]));for(let i=pes.length-1;i>=0;i--){const c=cl.get(pes[i].d);if(c)return Math.round(c/pes[i].pe*100)/100;}return null;}
@@ -731,14 +739,22 @@ async function addStock(){
   if(STOCKS[c]&&!STOCKS[c].custom){ALL.list.push(c);persist();addMsg(`已加回 ${STOCKS[c].name}。`);$('addCode').value='';switchStock(c);renderManage();return;}
   if(adding)return;adding=true;renderManage();
   try{
-    let bars=[],name=null,err=false,k=0;const bm=monthsBack(3),pm=monthsBack(24).filter((_,i)=>i%3===0),tot=bm.length+pm.length;
-    for(const[y,m]of bm){addMsg(`正在向證交所抓股價…（${++k}/${tot}）`);const r=await fetchBars(c,y,m);bars=bars.concat(r.bars);name=name||r.name;err=err||r.err;}
-    if(!bars.length){addMsg(err?'連不上證交所，請稍後再試。':`找不到 ${c} 的資料。目前只支援上市股票（上櫃、興櫃還不行），請確認代號。`);return;}
-    let pes=[],recent=[];
-    for(const[y,m]of pm){addMsg(`正在抓本益比，算合理的主人位置…（${++k}/${tot}）`);const p=await fetchPE(c,y,m);if(!recent.length)recent=p;pes=pes.concat(p);}
+    let bars=[],name=null,mkt='twse',recent=[],peList=[];
+    addMsg('正在找這個代號…');const o=await fetchOtc(c);
+    if(o.bars.length){  // 上櫃：本益比中位數 = 過去兩年每季一天 + 最近幾個月的中位數
+      mkt='otc';bars=o.bars;name=o.name;recent=o.pes;const h=await otcHist();
+      peList=[...(h&&h.s[c]||[]),...(o.pes.length?[median(o.pes.map(p=>p.pe))]:[])];
+    }else{  // 上市：直接向證交所抓
+      let err=false,k=0;const bm=monthsBack(3),pm=monthsBack(24).filter((_,i)=>i%3===0),tot=bm.length+pm.length;
+      for(const[y,m]of bm){addMsg(`正在向證交所抓股價…（${++k}/${tot}）`);const r=await fetchBars(c,y,m);bars=bars.concat(r.bars);name=name||r.name;err=err||r.err;}
+      if(!bars.length){addMsg(err?'連不上證交所，請稍後再試。':`找不到 ${c} 的資料。目前支援上市、上櫃股票（興櫃還不行），請確認代號。`);return;}
+      let pes=[];
+      for(const[y,m]of pm){addMsg(`正在抓本益比，算合理的主人位置…（${++k}/${tot}）`);const p=await fetchPE(c,y,m);if(!recent.length)recent=p;pes=pes.concat(p);}
+      if(!recent.length)recent=pes;peList=pes.map(p=>p.pe);
+    }
     const x={bars:[]};mergeBars(x,bars);
-    const eps=epsFrom(x.bars,recent.length?recent:pes),medPE=pes.length?Math.round(median(pes.map(p=>p.pe))*2)/2:null;
-    ALL.custom[c]={name:name||c,pe:medPE};addMeta(c,{name:name||c,ym:'',close:0,eps:eps||0,pe:medPE});setMeta(c,x,eps);
+    const eps=epsFrom(x.bars,recent),medPE=peList.length?Math.round(median(peList)*2)/2:null;
+    ALL.custom[c]={name:name||c,pe:medPE,mkt};addMeta(c,{name:name||c,ym:'',close:0,eps:eps||0,pe:medPE});setMeta(c,x,eps);
     const st=newState(c);st.bars=x.bars;st.epsAuto=true;
     if(!(eps>0)||!medPE){st.mode='ma';st.pe=medPE||'';}  // 虧損或沒有本益比：主人改用 20 日均線
     ALL.st[c]=st;ALL.list.push(c);persist();$('addCode').value='';
@@ -748,6 +764,8 @@ async function addStock(){
 }
 // 每次打開網頁，補上自選股票的新交易日（半小時內抓過就不再抓）
 async function refreshCustom(c){const m=ALL.custom[c],x=ALL.st[c];if(!m||!x||Date.now()-(m.fetched||0)<30*60e3)return false;
+  if(m.mkt==='otc'){const o=await fetchOtc(c);if(!o.bars.length)return false;mergeBars(x,o.bars);
+    const eps=epsFrom(x.bars,o.pes);if(eps>0&&x.epsAuto!==false)x.eps=eps;setMeta(c,x,eps);persist();return true;}
   const lastM=x.bars.length?x.bars[x.bars.length-1].d.slice(0,7):'';let got=[];
   for(const[y,mm]of monthsBack(3).filter(([y,mm])=>`${y}-${String(mm).padStart(2,'0')}`>=lastM).reverse())got=got.concat((await fetchBars(c,y,mm)).bars);
   if(!got.length)return false;mergeBars(x,got);

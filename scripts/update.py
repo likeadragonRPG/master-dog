@@ -126,6 +126,120 @@ def main():
         json.dump(data, f, ensure_ascii=False)
     print("updated:", data["updated"])
 
+    # 4) 上櫃股票（給網頁的「自己加入股票」用）。失敗不影響上面四檔的更新
+    try:
+        update_otc(today)
+    except Exception as e:
+        print("otc failed:", e)
+
+
+# ===== 上櫃股票 =====
+# 櫃買中心不允許網頁直接讀取，所以由這裡每天代抓全部上櫃股票，存成 otc/年-月.json：
+#   {"n": {代號: 名稱}, "s": {代號: [[日, 開, 高, 低, 收, 本益比或null], ...]}, "done": [已處理的日]}
+# 另存 otc/pe-hist.json：過去兩年每季取一天的本益比，網頁用來算本益比中位數。
+OTC = os.path.join(ROOT, "otc")
+TPEX = "https://www.tpex.org.tw/www/zh-tw/afterTrading/"
+
+
+def tpex_day(day):
+    """某一天全部上櫃股票的 {代號: (名稱, 開, 高, 低, 收)} 和 {代號: 本益比}。抓不到回 None；休市回空的。"""
+    ds = day.strftime("%Y/%m/%d")
+    j = get_json(f"{TPEX}otc?date={ds}&type=EW&response=json")
+    time.sleep(2)
+    if not j or j.get("stat") != "ok":
+        return None
+    quotes = {}
+    for tb in j.get("tables", []):
+        f = [x.strip() for x in tb.get("fields", [])]
+        if "代號" not in f or "收盤" not in f:
+            continue
+        i = {k: f.index(k) for k in ["代號", "名稱", "開盤", "最高", "最低", "收盤"]}
+        for r in tb.get("data", []):
+            code = r[i["代號"]].strip()
+            c = num(r[i["收盤"]])
+            if len(code) == 4 and code.isdigit() and c:  # 只收一般股票
+                o, h, l = (num(r[i[k]]) for k in ["開盤", "最高", "最低"])
+                quotes[code] = (r[i["名稱"]].strip(), o or c, h or c, l or c, c)
+    return quotes, (tpex_pe(day) if quotes else {})
+
+
+def tpex_pe(day):
+    j = get_json(f"{TPEX}peQryDate?date={day.strftime('%Y/%m/%d')}&response=json")
+    time.sleep(2)
+    out = {}
+    for tb in (j or {}).get("tables", []):
+        f = [x.strip() for x in tb.get("fields", [])]
+        if "股票代號" in f and "本益比" in f:
+            for r in tb.get("data", []):
+                pe = num(r[f.index("本益比")])
+                if pe and pe > 0:
+                    out[r[f.index("股票代號")].strip()] = pe
+    return out
+
+
+def load_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def save_json(path, obj):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+
+
+def update_otc(today):
+    os.makedirs(OTC, exist_ok=True)
+    keep = set()
+    for (y, m) in months_back(today, 3):
+        name = f"{y}-{m:02d}.json"
+        keep.add(name)
+        path = os.path.join(OTC, name)
+        mo = load_json(path, {"n": {}, "s": {}, "done": []})
+        changed = False
+        d = dt.date(y, m, 1)
+        while d.month == m and d <= today:
+            if d.weekday() < 5 and d.day not in mo["done"]:
+                got = tpex_day(d)
+                if got is not None:
+                    quotes, pes = got
+                    for code, (nm, o, h, l, c) in quotes.items():
+                        mo["n"][code] = nm
+                        mo["s"].setdefault(code, []).append([d.day, o, h, l, c, pes.get(code)])
+                    # 今天還沒資料可能是還沒公布，下次再試；以前的日子沒資料就是休市
+                    if quotes or d < today:
+                        mo["done"].append(d.day)
+                        changed = True
+                    print("otc", d, len(quotes), "檔")
+            d += dt.timedelta(days=1)
+        if changed:
+            for rows in mo["s"].values():
+                rows.sort()
+            save_json(path, mo)
+    for f in os.listdir(OTC):  # 只保留最近 3 個月
+        if f[:4].isdigit() and f not in keep:
+            os.remove(os.path.join(OTC, f))
+
+    # 本益比歷史：每季一天，兩年 8 個點；每季重建一次
+    hp = os.path.join(OTC, "pe-hist.json")
+    hist = load_json(hp, {})
+    tag = f"{today.year}Q{(today.month - 1) // 3 + 1}"
+    if hist.get("built") != tag:
+        s = {}
+        for (y, m) in months_back(today, 24)[3::3]:
+            d = dt.date(y, m, 15)
+            for _ in range(7):  # 遇到假日往後找
+                pes = tpex_pe(d) if d.weekday() < 5 else {}
+                if pes:
+                    break
+                d += dt.timedelta(days=1)
+            for code, pe in pes.items():
+                s.setdefault(code, []).append(pe)
+            print("otc pe-hist", d, len(pes), "檔")
+        save_json(hp, {"built": tag, "s": s})
+
 
 if __name__ == "__main__":
     main()
