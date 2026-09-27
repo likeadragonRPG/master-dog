@@ -171,6 +171,7 @@ details[open]>summary{margin-bottom:12px}
         <button class="ghost" id="didBuy">我買回 1 張</button>
       </div>
       <p class="note">實際成交後再按，會以最新收盤價記錄在圖上。</p>
+      <p class="note" id="btnHint" hidden></p>
       <p class="note" id="holdHint" hidden>目前是觀察模式（0 張），所以這兩個按鈕按不了。有持股的話，到「主人與繩子的設定」填入總張數和核心張數。</p>
     </section>
   </div>
@@ -209,7 +210,7 @@ details[open]>summary{margin-bottom:12px}
         <label>主人怎麼算
           <select id="mode"><option value="pe">基本面：EPS × 本益比</option><option value="ma">均線：最近 N 日平均</option></select>
         </label>
-        <label data-m="pe">未來一年 EPS（元）<input id="eps" type="number" step="0.5" inputmode="decimal"></label>
+        <label data-m="pe">近四季 EPS（元）<input id="eps" type="number" step="0.5" inputmode="decimal"></label>
         <label data-m="pe">合理本益比（倍）<input id="pe" type="number" step="0.5" inputmode="decimal"></label>
         <label data-m="ma">均線天數<input id="maN" type="number" step="1" inputmode="numeric"></label>
         <label>近身範圍 ±%<input id="near" type="number" step="1" inputmode="decimal"></label>
@@ -238,7 +239,7 @@ details[open]>summary{margin-bottom:12px}
       所以只看兩件事：主人往哪走（基本面有沒有變），狗離主人多遠（股價偏離多少）。
       操作規則：核心張數永遠不動；機動張數在狗跑到「近身範圍」外賣第一張、「跑太遠」再賣第二張；狗回到主人身邊買回一張，落後到近身範圍外再買回另一張。
       狗落後很遠但手上沒有賣掉的部位時，先確認主人有沒有轉向，再決定是否加碼。
-      台積電預載證交所公布的 2026 年 9 月各日成交資訊；其他三檔只預載最近兩個交易日，之後每天記錄，或從證交所網頁複製表格一次貼上。本工具只是把想法換成數字，不構成投資建議。</p>
+      每個交易日收盤後，網頁會自動從證交所抓最新股價和近四季 EPS，不需要手動輸入；「記錄今天」只在想先看盤中價格時使用。本工具只是把想法換成數字，不構成投資建議。</p>
     </details>
   </section>
 </div>
@@ -317,10 +318,9 @@ const STOCKS={"2330": {"name": "台積電", "method": "pe", "near": 6, "far": 12
 STOCKS['2330'].bars=TSEED;
 const KEY='mdog-multi-v3';
 function median(a){const b=[...a].sort((x,y)=>x-y),h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2;}
-const FWD={};
 const DPE={'2330':26,'2454':22,'3037':25,'2408':10};
 function newState(c){const m=STOCKS[c],last=m.rows[m.rows.length-1],pes=m.rows.filter(r=>r[2]>0).map(r=>r[1]/r[2]);
-  return {mode:'pe',eps:FWD[c]||last[2],pe:DPE[c],maN:20,near:m.near,far:m.far,lots:m.lots,core:m.core,cost:'',held:null,
+  return {mode:'pe',eps:last[2],pe:DPE[c],maN:20,near:m.near,far:m.far,lots:m.lots,core:m.core,cost:'',held:null,
     bars:m.bars.map(([d,o,h,l,c])=>({d,o,h,l,c})),trades:[],range:0,lt:{peMode:'median',pe:'',fwd:'',scale:c==='2330'?'lin':'log',span:60,upd:[]}};}
 let ALL={cur:'2330',tab:'daily',st:{}};
 try{const r=localStorage.getItem(KEY);if(r)ALL=Object.assign(ALL,JSON.parse(r));
@@ -329,11 +329,9 @@ try{const r=localStorage.getItem(KEY);if(r)ALL=Object.assign(ALL,JSON.parse(r));
     if(v.lt)['peMode','pe','fwd','scale','span'].forEach(k=>{if(v.lt[k]!==undefined)st.lt[k]=v.lt[k]});ALL.st['2330']=st;}}}catch(e){}
 Object.keys(STOCKS).forEach(c=>{if(!ALL.st[c])ALL.st[c]=newState(c);const x=ALL.st[c];if(!x.lt)x.lt=newState(c).lt;if(!x.lt.upd)x.lt.upd=[];if(!x.bars||!x.bars.length)x.bars=newState(c).bars;});
 Object.keys(STOCKS).forEach(c=>{const x=ALL.st[c],have=new Set(x.bars.map(b=>b.d));STOCKS[c].bars.forEach(([d,o,h,l,cl])=>{if(!have.has(d))x.bars.push({d,o,h,l,c:cl});});x.bars.sort((a,z)=>a.d<z.d?-1:1);});
-if(!ALL.peDefault26){Object.keys(STOCKS).forEach(c=>{const x=ALL.st[c],r=STOCKS[c].rows;x.mode='pe';x.pe=26;x.eps=r[r.length-1][2];});ALL.peDefault26=true;}
-if(!ALL.fwdEps1){Object.keys(FWD).forEach(c=>{const x=ALL.st[c];x.mode='pe';x.pe=26;x.eps=FWD[c];});ALL.fwdEps1=true;}
-if(!ALL.dpe1){Object.keys(DPE).forEach(c=>{ALL.st[c].pe=DPE[c];});ALL.dpe1=true;}
-if(!ALL.fwd2330){ALL.st['2330'].eps=129.9;ALL.st['2330'].mode='pe';ALL.fwd2330=true;}
-if(!ALL.ttm1){Object.keys(STOCKS).forEach(c=>{const r=STOCKS[c].rows,x=ALL.st[c];x.eps=r[r.length-1][2];x.mode='pe';x.pe=DPE[c];});ALL.ttm1=true;}
+// 設定版本：1 = 近四季 EPS × 預設本益比（取代舊的 peDefault26/fwdEps1/dpe1/fwd2330/ttm1 旗標）
+if(!(ALL.ver>=1)){if(!ALL.ttm1)Object.keys(STOCKS).forEach(c=>{const r=STOCKS[c].rows,x=ALL.st[c];x.eps=r[r.length-1][2];x.mode='pe';x.pe=DPE[c];});
+  ['peDefault26','fwdEps1','dpe1','fwd2330','ttm1'].forEach(k=>delete ALL[k]);ALL.ver=1;}
 if(!STOCKS[ALL.cur])ALL.cur='2330';
 let S=ALL.st[ALL.cur];
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(ALL))}catch(e){}}
@@ -406,6 +404,8 @@ function render(){
 
   drawK(Ms,p);drawDev(devs,p);drawLadder(P,M,p);drawDonut(p,P);scenario();tables(Ms);
   $('didSell').disabled=p.held<=0;$('didBuy').disabled=p.sold<=0;
+  const why=[p.held<=0&&(p.flex>0?'機動部位已經全部賣出，所以「我賣了 1 張」按不了（核心張數不賣）。':'總張數等於核心張數，沒有機動部位可賣，所以「我賣了 1 張」按不了。'),p.sold<=0&&'還沒有賣出過，所以「我買回 1 張」按不了。'].filter(Boolean);
+  $('btnHint').hidden=+S.lots<=0||!why.length;$('btnHint').textContent=why.join('');
   const nb=S.bars.length;document.querySelectorAll('#rangeSeg button').forEach(x=>{const r=+x.dataset.r;x.disabled=r>0&&r>nb;x.setAttribute('aria-pressed',String(r===+S.range||(x.disabled===false&&r===0&&+S.range>=nb)));});
   $('kNote').hidden=nb>20;$('kNote').textContent=`目前有 ${nb} 天的資料（${S.bars[0].d.slice(5).replace('-','/')} 起），所以「近 20 日」和「全部」看起來一樣。每天收盤後會自動補上新的一天，「全部」就會越來越長。`;
   $('holdHint').hidden=+S.lots>0;renderPicker();
@@ -421,7 +421,7 @@ function drawK(Ms,p){
   [p.nextSell,p.nextBuy].forEach(v=>{if(v&&v<hi*1.04&&v>lo*0.96){lo=Math.min(lo,v);hi=Math.max(hi,v);}});
   const pad=(hi-lo)*0.06;lo-=pad;hi+=pad;
   const X=i=>L+cw*i+cw/2,Y=v=>T+(hi-v)/(hi-lo)*(H-T-Bt);
-  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="台積電 K 線、主人位置與買賣點">`;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${STOCKS[ALL.cur].name} K 線、主人位置與買賣點">`;
   // grid
   const step=[10,20,25,50,100,200,250,500].find(x=>(hi-lo)/x<=6)||1000;
   for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step)s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--line)"/><text x="${W-R+6}" y="${Y(v)+4}" font-size="11" style="fill:var(--soft)">${fmt(v)}</text>`;
@@ -505,7 +505,11 @@ function tables(Ms){
 // settings
 const F=['mode','eps','pe','maN','near','far','lots','core','cost'];
 function syncMode(){document.querySelectorAll('[data-m]').forEach(l=>l.hidden=l.dataset.m!==S.mode);}
-F.forEach(k=>{const el=$(k);el.value=S[k];el.addEventListener('input',()=>{S[k]=el.tagName==='SELECT'?el.value:(el.value===''?'':+el.value);syncMode();persist();render();});});
+F.forEach(k=>{const el=$(k);el.value=S[k];el.addEventListener('input',()=>{
+  // EPS 清空 = 恢復自動（用最新的近四季 EPS）；手動填寫 = 停止自動更新
+  if(k==='eps'){if(el.value===''){S.epsAuto=true;const r=STOCKS[ALL.cur].rows;S.eps=r[r.length-1][2];el.value=S.eps;}else{S.epsAuto=false;S.eps=+el.value;}}
+  else S[k]=el.tagName==='SELECT'?el.value:(el.value===''?'':+el.value);
+  syncMode();persist();render();});});
 $('sc').addEventListener('input',scenario);
 document.querySelectorAll('#rangeSeg button').forEach(x=>x.onclick=()=>{S.range=+x.dataset.r;persist();render();});
 function lastBar(){return S.bars[S.bars.length-1];}
@@ -671,10 +675,10 @@ function renderPicker(){
 function syncForm(){F.forEach(k=>{$(k).value=S[k];});syncMode();$('lPeMode').value=S.lt.peMode;$('lPe').value=S.lt.pe;$('lFwd').value=S.lt.fwd;$('lPeWrap').hidden=S.lt.peMode!=='custom';fillUpd();$('sc').value=0;$('tip').textContent='點 K 棒可看當日明細';$('lTip').textContent='點圖上任一個月可看明細';$('saveMsg').textContent='';}
 function switchStock(c){if(!STOCKS[c])return;ALL.cur=c;S=ALL.st[c];syncForm();persist();showTab(ALL.tab);}
 syncForm();showTab(ALL.tab==='long'?'long':'daily');
-$('eps').addEventListener('input',()=>{if($('eps').value===''){S.epsAuto=true;const r=STOCKS[ALL.cur].rows;S.eps=r[r.length-1][2];$('eps').value=S.eps;persist();render();}else S.epsAuto=false;persist();});
 (async()=>{try{const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const D=await r.json();
   Object.keys(STOCKS).forEach(c=>{const d=D.stocks&&D.stocks[c];if(!d)return;
     if(d.rows&&d.rows.length)STOCKS[c].rows=d.rows;
+    if(d.bars&&d.bars.length)STOCKS[c].bars=d.bars; // 「還原成預設資料」也用最新官方資料
     const x=ALL.st[c],map=new Map(x.bars.map(b=>[b.d,b]));(d.bars||[]).forEach(([dd,o,h,l,cl])=>map.set(dd,{d:dd,o,h,l,c:cl}));
     x.bars=[...map.values()].sort((a,z)=>a.d<z.d?-1:1);
     if(x.epsAuto!==false&&d.fund&&d.fund.eps>0)x.eps=d.fund.eps;});

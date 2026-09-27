@@ -69,7 +69,8 @@ def months_back(today, n):
 
 
 def main():
-    data = json.load(open(DATA, encoding="utf-8"))
+    with open(DATA, encoding="utf-8") as f:
+        data = json.load(f)
     today = dt.datetime.now(TW).date()
 
     # 1) 每日股價
@@ -84,21 +85,24 @@ def main():
         print(code, "bars:", len(s["bars"]), "last:", s["bars"][-1])
 
     # 2) 最新本益比 / 股價淨值比 → 反推近四季 EPS 與每股淨值
+    #    本益比常比股價晚一天公布，所以要用「本益比那一天」的收盤價來反推，日期對不上就不更新
     pe = get_json("https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL") or []
     pe = {r.get("Code"): r for r in pe if isinstance(r, dict)}
     for code in CODES:
         s = data["stocks"][code]
-        close = s["bars"][-1][4]
         r = pe.get(code)
-        if r:
+        closes = {b[0]: b[4] for b in s["bars"]}
+        day = roc_to_iso(f"{r['Date'][:-4]}/{r['Date'][-4:-2]}/{r['Date'][-2:]}") if r and r.get("Date") else None
+        close = closes.get(day)
+        if r and close:
             per, pbr = num(r.get("PEratio")), num(r.get("PBratio"))
             fund = s.setdefault("fund", {})
             if per and per > 0:
                 fund["eps"] = round(close / per, 2)
             if pbr and pbr > 0:
                 fund["bps"] = round(close / pbr, 2)
-            fund["date"] = s["bars"][-1][0]
-        print(code, "fund:", s.get("fund"))
+            fund["date"] = day
+        print(code, "fund:", s.get("fund"), "(本益比日期", day, ")")
 
     # 3) 每月資料（五年長期）：本月用最新收盤與最新 EPS／淨值
     for code in CODES:
@@ -118,7 +122,8 @@ def main():
         s["rows"] = rows[-72:]
 
     data["updated"] = max(data["stocks"][c]["bars"][-1][0] for c in CODES)
-    json.dump(data, open(DATA, "w", encoding="utf-8"), ensure_ascii=False)
+    with open(DATA, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
     print("updated:", data["updated"])
 
 
