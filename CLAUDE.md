@@ -59,7 +59,7 @@ scripts/update.py              # 抓資料腳本，只用 Python 內建模組
 
 - localStorage key：`mdog-multi-v3`。結構是 `ALL = {cur, tab, st: {代號: 個股狀態}}`，全域變數 `S = ALL.st[ALL.cur]`。
 - 舊版遷移：會讀取 `tsmc-master-dog-v2`，也就是 claude.ai 上舊版 artifact 的資料。
-- 一次性遷移旗標：`peDefault26`、`fwdEps1`、`dpe1`、`fwd2330`、`ttm1`。這些是設定來回調整留下的，可以整理成單一版本號。
+- 設定版本號 `ALL.ver`（目前 1）。舊的一次性旗標 `peDefault26`、`fwdEps1`、`dpe1`、`fwd2330`、`ttm1` 已整併，載入時會刪掉。之後要改預設值，就加 `ver<2` 的遷移。
 - 個股狀態欄位：
   - `mode`：`pe` 或 `ma`
   - `eps`、`epsAuto`（手動改 EPS 後設為 false；清空欄位就恢復自動）
@@ -71,7 +71,13 @@ scripts/update.py              # 抓資料腳本，只用 Python 內建模組
 - 兩個分頁：
   - **每日操作**：K 線、偏離柱狀圖、繩子儀表、點位梯子、持股圓餅、情境滑桿。
   - **五年長期**：本益比（南亞科用本淨比）河流圖、五年偏離、分布直方圖、主人成長柱狀圖、自動產生的解讀文字。
-- 頂部四張股票卡片：用 `withStock(code, fn)` 暫時切換 `S` 和 `ALL.cur` 來計算。注意 `aria-pressed` 要用切換前的 `cur` 判斷，不能在 `withStock` 裡面判斷。
+- 自選股票（使用者自己輸入代號，只支援上市）：
+  - `ALL.list` 是卡片順序（預設四檔也能移除、再一鍵加回），`ALL.custom[代號] = {name, pe, ym, close, eps, fetched}`，最多 8 檔。
+  - 網頁**直接向證交所抓**：`rwd/zh/afterTrading/STOCK_DAY`、`BWIBBU` 都有 `Access-Control-Allow-Origin: *`。所有請求排隊，間隔 2 秒。
+  - 加入時抓近 3 個月 K 線，再取近 2 年每季一個月的本益比，中位數當預設本益比；EPS = 同一天收盤 ÷ 本益比。沒有本益比（虧損）就改用 20 日均線。
+  - 每次打開網頁補上新交易日（30 分鐘內抓過就跳過）。自選股票不在 `data.json`，只存在各自手機的 localStorage。
+  - 自選股票沒有五年資料，`computeLong` 回 null，「五年長期」分頁停用並顯示原因。
+- 頂部股票卡片：用 `withStock(code, fn)` 暫時切換 `S` 和 `ALL.cur` 來計算。注意 `aria-pressed` 要用切換前的 `cur` 判斷，不能在 `withStock` 裡面判斷。
 - 圖表全部是手寫 SVG，寬度取容器的 `clientWidth`，視窗 resize 時重畫。**切到隱藏分頁時 `clientWidth` 是 0**，所以切換分頁後才能 render。
 
 ### 操作邏輯（`plan` / `advise`）
@@ -107,12 +113,13 @@ scripts/update.py              # 抓資料腳本，只用 Python 內建模組
 ## 已知問題 / 待辦
 
 - 只在模擬資料下測過，目前真實執行正常（第一次跑抓到 61 天）。
-- Actions 警告：`actions/checkout@v4`、`setup-python@v5` 用的是 Node 20，已被強制改用 Node 24，建議升級到新版 action。另外 `ubuntu-latest` 會在 2026-10-19 起改成 Ubuntu 26。
+- Actions 已升級到 `checkout@v5`、`setup-python@v6`（Node 24），並固定 `ubuntu-24.04`。
+- 使用者回饋（2026-09-27 LINE 群組）：最多人要「自己換股票」，已做成自選股票。另有人問「有沒有 app」（可做加到主畫面，Fred 說先不用）、台指期／選擇權（沒有 EPS，不適用）、自動下單（不做）。
 - 資料只存在各自手機的 localStorage，不同裝置之間不同步，也沒有匯出／匯入功能。可以考慮加一個「備份碼」功能。
 - `data.json` 的 K 棒會覆蓋使用者在同一天手動輸入的價格。這是刻意設計，以官方資料為準。
 - `index.html` 內嵌的 `STOCKS` 和 `TSEED` 種子資料跟 `data.json` 重複，只當離線備援用，可以考慮精簡。
 - 沒有自動化測試。之前是用 Playwright 腳本逐一點過所有按鈕，確認畫面有變化，建議補成正式測試。
-- 其他可以做的方向：加入新股票（需要補五年月資料）、財報公布日提醒、LINE 通知。
+- 其他可以做的方向：自選股票的五年長期分頁（需要補五年月資料）、上櫃股票（櫃買中心 API）、財報公布日提醒、LINE 通知。
 
 ## 本機開發
 
