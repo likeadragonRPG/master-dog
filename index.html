@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>主人與狗・四檔追蹤</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E9EEF1;--panel:#FFFFFF;--ink:#1C2A36;--soft:#5B6B78;--line:#D3DCE2;--band:#DCE8F2;
+  --leash:#8A5A2B;--up:#C62828;--down:#2E7D32;--hold:#1F5F8B;--warn:#B26A00;--ma:#7B5EA7;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111920;--panel:#1A242E;--ink:#E6ECF0;--soft:#9AA9B5;--line:#2C3A47;--band:#1F3346;
+  --leash:#D09A62;--up:#EF5350;--down:#66BB6A;--hold:#64B5F6;--warn:#FFB74D;--ma:#B39DDB;}}
+:root[data-theme="dark"]{
+  --bg:#111920;--panel:#1A242E;--ink:#E6ECF0;--soft:#9AA9B5;--line:#2C3A47;--band:#1F3346;
+  --leash:#D09A62;--up:#EF5350;--down:#66BB6A;--hold:#64B5F6;--warn:#FFB74D;--ma:#B39DDB;}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:16px 14px 56px}
+header{display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap;gap:6px;margin:6px 0 14px}
+h1{font:900 1.8rem/1.2 "Noto Serif TC","PMingLiU",serif;margin:0;letter-spacing:.02em}
+h2{font:600 1.15rem/1.3 "Noto Serif TC",serif;margin:0 0 10px}
+.asof{color:var(--soft);font-size:.9rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.layout{display:grid;gap:14px;grid-template-columns:1fr}
+@media (min-width:900px){.layout{grid-template-columns:1.6fr 1fr}.span2{grid-column:1/-1}}
+.stack{display:grid;gap:14px;align-content:start}
+/* verdict banner */
+.banner{border-left:8px solid var(--hold);display:grid;gap:4px}
+.banner .act{font:900 1.9rem/1.25 "Noto Serif TC",serif}
+.banner .why{color:var(--soft)}
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:640px){.kpis{grid-template-columns:repeat(5,1fr)}}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.kpi small{display:block;color:var(--soft);font-size:.82rem}
+.kpi b{display:block;font-size:1.45rem;line-height:1.25;font-variant-numeric:tabular-nums}
+.kpi span{font-size:.85rem}
+/* charts */
+.chartbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--ink);padding:6px 12px;font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.8rem;color:var(--soft);margin-top:6px}
+.legend i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:4px}
+.tip{min-height:1.6em;font-size:.9rem;color:var(--soft);font-variant-numeric:tabular-nums}
+svg{display:block;width:100%;height:auto;touch-action:pan-y}
+/* gauge */
+.gauge{position:relative;height:92px;margin:6px 6px 0}
+.track{position:absolute;left:0;right:0;top:46px;height:6px;border-radius:3px;background:var(--line)}
+.zone{position:absolute;top:46px;height:6px}
+.tick{position:absolute;top:58px;transform:translateX(-50%);font-size:.72rem;color:var(--soft);white-space:nowrap}
+.fig{position:absolute;top:0;transform:translateX(-50%);text-align:center;font-size:.78rem;line-height:1.1}
+.fig span{font-size:1.8rem;display:block}
+.dog{transition:left .6s ease}
+@media (prefers-reduced-motion:reduce){.dog{transition:none}}
+.rope{position:absolute;top:30px;height:3px;background:repeating-linear-gradient(90deg,var(--leash) 0 6px,transparent 6px 9px)}
+.stat{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
+.stat:last-child{border-bottom:0}
+.stat em{font-style:normal;color:var(--soft)}
+.stat strong{font-variant-numeric:tabular-nums;text-align:right}
+/* forms */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+label{display:block;font-size:.88rem;color:var(--soft)}
+input,select,textarea{width:100%;margin-top:4px;padding:9px 11px;font:inherit;font-size:1.05rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px}
+textarea{font-size:.95rem;min-height:84px}
+input[type=range]{padding:0;accent-color:var(--hold)}
+input:focus-visible,select:focus-visible,button:focus-visible,textarea:focus-visible{outline:3px solid var(--hold);outline-offset:2px}
+button{font:inherit;font-weight:700;padding:9px 15px;border-radius:8px;border:1px solid var(--ink);background:var(--ink);color:var(--panel);cursor:pointer}
+button.ghost{background:transparent;color:var(--ink)}
+button:disabled{opacity:.35;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-weight:500;color:var(--soft);font-size:.82rem}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.up{color:var(--up)}.down{color:var(--down)}.hold{color:var(--hold)}.warn{color:var(--warn)}
+.note{font-size:.84rem;color:var(--soft);line-height:1.7;margin:8px 0 0}
+details>summary{cursor:pointer;font:600 1.15rem/1.3 "Noto Serif TC",serif;list-style-position:inside}
+details[open]>summary{margin-bottom:12px}
+.x{border:0;background:transparent;color:var(--soft);padding:2px 6px;font-weight:400}
+.sc-out{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:10px}
+[hidden]{display:none!important}
+.picker{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 0 12px}
+@media (min-width:640px){.picker{grid-template-columns:repeat(4,1fr)}}
+.pk{text-align:left;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-weight:400;line-height:1.35}
+.pk[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--band)}
+.pk .nm{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.pk .nm b{font-size:1.05rem}.pk .nm small{color:var(--soft);font-size:.78rem}
+.pk .px{display:block;font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0}
+.pk .dv{display:flex;gap:10px;font-size:.8rem;color:var(--soft)}
+.pk .dv span b{font-weight:700}
+.tabs{display:flex;gap:0;margin:0 0 14px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.tabs button{flex:1;border:0;border-radius:0;background:transparent;color:var(--ink);padding:12px;font-size:1.05rem}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.read{font-size:1rem;line-height:1.8;margin:0}
+.read b{font-weight:700}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1 id="title">主人與狗</h1>
+  <div class="asof" id="asof"></div>
+</header>
+<nav class="picker" id="picker" aria-label="選擇股票"></nav>
+<div class="tabs" role="tablist">
+  <button role="tab" id="tb-daily" aria-selected="true">每日操作</button>
+  <button role="tab" id="tb-long" aria-selected="false">五年長期</button>
+</div>
+
+<div class="layout" id="tab-daily">
+  <section class="card banner span2" id="banner" aria-live="polite">
+    <div class="asof">今日操作建議</div>
+    <div class="act" id="bAct"></div>
+    <div class="why" id="bWhy"></div>
+  </section>
+
+  <div class="kpis span2" id="kpis"></div>
+
+  <div class="stack">
+    <section class="card">
+      <div class="chartbar">
+        <h2 style="margin:0">K 線與主人的繩子</h2>
+        <div class="seg" role="group" aria-label="顯示區間" id="rangeSeg">
+          <button data-r="10">近 10 日</button><button data-r="20">近 20 日</button><button data-r="0">全部</button>
+        </div>
+      </div>
+      <div class="tip" id="tip">點 K 棒可看當日明細</div>
+      <div id="kchart"></div>
+      <p class="note" id="kNote" hidden></p>
+      <div class="legend">
+        <span><i style="background:var(--leash)"></i>主人</span>
+        <span><i style="background:var(--band);height:10px"></i>近身範圍</span>
+        <span><i style="background:var(--ma)"></i>5 日均線</span>
+        <span><i style="background:var(--up);height:2px"></i>下一個賣點</span>
+        <span><i style="background:var(--down);height:2px"></i>下一個買回點</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>狗的擺盪（每天離主人多遠）</h2>
+      <div id="devchart"></div>
+      <p class="note">柱子超過虛線，代表狗已跑出近身範圍。紅柱在主人前面，綠柱在主人後面。</p>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="card">
+      <h2>繩子拉多長了</h2>
+      <div class="gauge" id="gauge" aria-hidden="true"></div>
+      <div id="dogStats" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card">
+      <h2>點位梯子</h2>
+      <div id="ladder"></div>
+    </section>
+
+    <section class="card">
+      <h2>持股分配</h2>
+      <div id="donut"></div>
+      <div class="row">
+        <button class="ghost" id="didSell">我賣了 1 張</button>
+        <button class="ghost" id="didBuy">我買回 1 張</button>
+      </div>
+      <p class="note">實際成交後再按，會以最新收盤價記錄在圖上。</p>
+      <p class="note" id="holdHint" hidden>目前是觀察模式（0 張），所以這兩個按鈕按不了。有持股的話，到「主人與繩子的設定」填入總張數和核心張數。</p>
+    </section>
+  </div>
+
+  <section class="card span2">
+    <h2>如果下次開盤變動…</h2>
+    <label>假設漲跌幅：<b id="scPct">0%</b>
+      <input type="range" id="sc" min="-20" max="20" step="1" value="0" aria-describedby="scHelp">
+    </label>
+    <div class="sc-out" id="scOut"></div>
+    <p class="note" id="scHelp">拖動看看漲或跌多少時，建議會改變。先想好劇本，開盤時就不會慌。</p>
+  </section>
+
+  <section class="card">
+    <h2>記錄今天</h2>
+    <div class="grid">
+      <label>日期<input id="fDate" type="date"></label>
+      <label>收盤價<input id="fC" type="number" inputmode="decimal" step="5"></label>
+      <label>開盤（可不填）<input id="fO" type="number" inputmode="decimal" step="5"></label>
+      <label>最高（可不填）<input id="fH" type="number" inputmode="decimal" step="5"></label>
+      <label>最低（可不填）<input id="fL" type="number" inputmode="decimal" step="5"></label>
+    </div>
+    <div class="row"><button id="saveBar">記錄</button><span class="note" id="saveMsg" style="margin:0"></span></div>
+    <details style="margin-top:14px">
+      <summary style="font-size:1rem">一次貼上多天資料</summary>
+      <textarea id="paste" placeholder="每行一天，例如：&#10;115/09/29 2480 2500 2470 2495&#10;2026-09-30 2510"></textarea>
+      <p class="note">格式：日期 收盤，或 日期 開 高 低 收。證交所網頁複製下來的表格也可以直接貼。</p>
+      <div class="row"><button class="ghost" id="doPaste">匯入</button></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>主人與繩子的設定</summary>
+      <div class="grid">
+        <label>主人怎麼算
+          <select id="mode"><option value="pe">基本面：EPS × 本益比</option><option value="ma">均線：最近 N 日平均</option></select>
+        </label>
+        <label data-m="pe">未來一年 EPS（元）<input id="eps" type="number" step="0.5" inputmode="decimal"></label>
+        <label data-m="pe">合理本益比（倍）<input id="pe" type="number" step="0.5" inputmode="decimal"></label>
+        <label data-m="ma">均線天數<input id="maN" type="number" step="1" inputmode="numeric"></label>
+        <label>近身範圍 ±%<input id="near" type="number" step="1" inputmode="decimal"></label>
+        <label>跑太遠 ±%<input id="far" type="number" step="1" inputmode="decimal"></label>
+        <label>總張數<input id="lots" type="number" step="1" inputmode="numeric"></label>
+        <label>核心不動（張）<input id="core" type="number" step="1" inputmode="numeric"></label>
+        <label>平均成本（元）<input id="cost" type="number" step="5" inputmode="decimal"></label>
+      </div>
+      <p class="note">EPS 每天收盤後會自動更新成最新的近四季數字。手動改過之後就會停止自動更新；把欄位清空，就會恢復自動。</p>
+    </details>
+  </section>
+
+  <section class="card span2">
+    <details>
+      <summary>交易紀錄與每日資料</summary>
+      <div class="tbl"><table id="tradeTbl"></table></div>
+      <div class="tbl" style="margin-top:12px;max-height:320px;overflow-y:auto"><table id="barTbl"></table></div>
+      <div class="row"><button class="ghost" id="reset">還原成預設資料</button></div>
+    </details>
+  </section>
+
+  <section class="card span2">
+    <details>
+      <summary>這套方法怎麼判斷</summary>
+      <p class="note">科斯托蘭尼說，股價像一隻跟著主人散步的狗，會跑前跑後，但最後一定回到主人身邊。主人是公司的真實價值。
+      所以只看兩件事：主人往哪走（基本面有沒有變），狗離主人多遠（股價偏離多少）。
+      操作規則：核心張數永遠不動；機動張數在狗跑到「近身範圍」外賣第一張、「跑太遠」再賣第二張；狗回到主人身邊買回一張，落後到近身範圍外再買回另一張。
+      狗落後很遠但手上沒有賣掉的部位時，先確認主人有沒有轉向，再決定是否加碼。
+      台積電預載證交所公布的 2026 年 9 月各日成交資訊；其他三檔只預載最近兩個交易日，之後每天記錄，或從證交所網頁複製表格一次貼上。本工具只是把想法換成數字，不構成投資建議。</p>
+    </details>
+  </section>
+</div>
+
+<div class="layout" id="tab-long" hidden>
+  <section class="card banner span2" id="lBanner">
+    <div class="asof">五年長期：狗離主人多遠</div>
+    <div class="act" id="lAct"></div>
+    <div class="why" id="lWhy"></div>
+  </section>
+  <div class="kpis span2" id="lKpis"></div>
+
+  <section class="card span2">
+    <div class="chartbar">
+      <h2 style="margin:0" id="riverTitle">本益比河流圖</h2>
+      <div class="seg" role="group" aria-label="顯示區間" id="spanSeg"><button data-p="24">近 2 年</button><button data-p="60">5 年</button></div>
+      <div class="seg" role="group" aria-label="價格刻度" id="scaleSeg">
+        <button data-s="lin">一般</button><button data-s="log">比例</button>
+      </div>
+    </div>
+    <div class="tip" id="lTip">點圖上任一個月可看明細</div>
+    <div id="river"></div>
+    <div class="legend" id="riverLegend"></div>
+    <p class="note" id="riverNote"></p>
+  </section>
+
+  <section class="card">
+    <h2>狗的五年擺盪</h2>
+    <div id="lDev"></div>
+    <p class="note">每個月收盤離主人幾 %。圖上標出過去五年狗跑最遠與落後最遠的月份。</p>
+  </section>
+
+  <section class="card">
+    <h2>狗的活動範圍</h2>
+    <div id="lHist"></div>
+    <p class="note" id="lHistNote"></p>
+  </section>
+
+  <section class="card">
+    <h2 id="basisTitle">主人走多快</h2>
+    <div id="lEps"></div>
+    <p class="note">主人往前走，繩子另一端的狗遲早跟上。這張圖要是開始往下走，才是真正要擔心的訊號。</p>
+  </section>
+
+  <section class="card">
+    <h2>怎麼解讀現在</h2>
+    <div id="lRead"></div>
+  </section>
+
+  <section class="card span2">
+    <details>
+      <summary>長期主人的設定</summary>
+      <div class="grid">
+        <label><span id="lPeLbl">主人用哪個本益比</span>
+          <select id="lPeMode"><option value="median">五年中位數（自動）</option><option value="custom">自己設定</option></select>
+        </label>
+        <label id="lPeWrap" hidden><span id="lPeCLbl">自訂本益比（倍）</span><input id="lPe" type="number" step="0.5" inputmode="decimal"></label>
+        <label><span id="lFwdLbl">未來一年 EPS 預估（可不填）</span><input id="lFwd" type="number" step="1" inputmode="decimal"></label>
+      </div>
+      <p class="note" id="fwdNote"></p>
+      <h2 style="margin-top:16px;font-size:1rem" id="updTitle">更新主人的數字</h2>
+      <div class="grid">
+        <label>從哪個月起<select id="uSel"></select></label>
+        <label><span id="uLbl">近四季 EPS（元）</span><input id="uVal" type="number" step="0.01" inputmode="decimal"></label>
+      </div>
+      <div class="row"><button class="ghost" id="uAdd">更新</button><span class="note" id="uMsg" style="margin:0"></span></div>
+      <p class="note" id="srcNote"></p>
+    </details>
+  </section>
+</div>
+</main>
+
+<script>
+const TSEED=[["2026-08-28", 2440, 2445, 2410, 2420], ["2026-08-31", 2395, 2405, 2375, 2405], ["2026-09-01", 2395, 2440, 2390, 2440], ["2026-09-02", 2415, 2420, 2385, 2385], ["2026-09-03", 2385, 2400, 2380, 2390], ["2026-09-04", 2415, 2415, 2390, 2410], ["2026-09-07", 2435, 2460, 2430, 2460], ["2026-09-08", 2465, 2505, 2460, 2470], ["2026-09-09", 2480, 2490, 2460, 2465], ["2026-09-10", 2445, 2455, 2435, 2450], ["2026-09-11", 2430, 2430, 2405, 2410], ["2026-09-14", 2385, 2395, 2380, 2380], ["2026-09-15", 2405, 2405, 2380, 2385], ["2026-09-16", 2375, 2395, 2375, 2380], ["2026-09-17", 2405, 2445, 2400, 2425], ["2026-09-18", 2460, 2460, 2435, 2460], ["2026-09-21", 2445, 2485, 2445, 2480], ["2026-09-22", 2505, 2510, 2460, 2460], ["2026-09-23", 2475, 2505, 2475, 2500], ["2026-09-24", 2480, 2490, 2470, 2475]];
+const STOCKS={"2330": {"name": "台積電", "method": "pe", "near": 6, "far": 12, "lots": 4, "core": 2, "rows": [["2021-10", 590, 22.11], ["2021-11", 596, 22.11], ["2021-12", 615, 22.11], ["2022-01", 636, 23.01], ["2022-02", 604, 23.01], ["2022-03", 597, 23.01], ["2022-04", 538, 25.44], ["2022-05", 560, 25.44], ["2022-06", 476, 25.44], ["2022-07", 509, 29.4], ["2022-08", 505, 29.4], ["2022-09", 422, 29.4], ["2022-10", 390, 34.2], ["2022-11", 490, 34.2], ["2022-12", 448.5, 34.2], ["2023-01", 522, 39.2], ["2023-02", 511, 39.2], ["2023-03", 533, 39.2], ["2023-04", 502, 39.36], ["2023-05", 558, 39.36], ["2023-06", 576, 39.36], ["2023-07", 565, 37.23], ["2023-08", 549, 37.23], ["2023-09", 523, 37.23], ["2023-10", 529, 34.54], ["2023-11", 577, 34.54], ["2023-12", 593, 34.54], ["2024-01", 628, 32.34], ["2024-02", 690, 32.34], ["2024-03", 779, 32.34], ["2024-04", 790, 33.06], ["2024-05", 821, 33.06], ["2024-06", 966, 33.06], ["2024-07", 934, 35.61], ["2024-08", 944, 35.61], ["2024-09", 957, 35.61], ["2024-10", 1030, 40.01], ["2024-11", 996, 40.01], ["2024-12", 1075, 40.01], ["2025-01", 1135, 45.25], ["2025-02", 1040, 45.25], ["2025-03", 910, 45.25], ["2025-04", 908, 50.49], ["2025-05", 967, 50.49], ["2025-06", 1060, 50.49], ["2025-07", 1160, 56.29], ["2025-08", 1160, 56.29], ["2025-09", 1305, 56.29], ["2025-10", 1500, 61.19], ["2025-11", 1440, 61.19], ["2025-12", 1550, 61.19], ["2026-01", 1775, 66.24], ["2026-02", 1995, 66.24], ["2026-03", 1760, 66.24], ["2026-04", 2135, 74.38], ["2026-05", 2355, 74.38], ["2026-06", 2410, 74.38], ["2026-07", 2425, 86.27], ["2026-08", 2405, 86.27], ["2026-09", 2475, 86.27]]}, "2454": {"name": "聯發科", "method": "pe", "near": 10, "far": 20, "lots": 0, "core": 0, "bars": [["2026-08-28", 3935, 4000, 3925, 3985], ["2026-08-31", 3885, 3945, 3820, 3925], ["2026-09-01", 4315, 4315, 4315, 4315], ["2026-09-02", 4450, 4565, 4230, 4275], ["2026-09-03", 4400, 4420, 4290, 4340], ["2026-09-04", 4435, 4490, 4340, 4415], ["2026-09-07", 4500, 4855, 4485, 4760], ["2026-09-08", 4800, 4830, 4685, 4710], ["2026-09-09", 4780, 4780, 4625, 4625], ["2026-09-10", 4560, 4730, 4520, 4720], ["2026-09-11", 4635, 4655, 4535, 4585], ["2026-09-14", 4475, 4650, 4435, 4560], ["2026-09-15", 4505, 4575, 4430, 4430], ["2026-09-16", 4435, 4625, 4435, 4530], ["2026-09-17", 4565, 4700, 4500, 4500], ["2026-09-18", 4600, 4735, 4545, 4710], ["2026-09-21", 4800, 5035, 4780, 5010], ["2026-09-22", 5280, 5480, 5150, 5180], ["2026-09-23", 5220, 5265, 5140, 5185], ["2026-09-24", 5105, 5360, 5105, 5285]], "rows": [["2021-10", 913.0, 70.56], ["2021-11", 1010.0, 70.56], ["2021-12", 1190.0, 70.56], ["2022-01", 1075.0, 75.27], ["2022-02", 1085.0, 75.27], ["2022-03", 905.0, 75.27], ["2022-04", 830.0, 80.25], ["2022-05", 905.0, 80.25], ["2022-06", 651.0, 80.25], ["2022-07", 683.0, 81.93], ["2022-08", 667.0, 81.93], ["2022-09", 551.0, 81.93], ["2022-10", 590.0, 74.59], ["2022-11", 733.0, 74.59], ["2022-12", 625.0, 74.59], ["2023-01", 718.0, 64.16], ["2023-02", 723.0, 64.16], ["2023-03", 787.0, 64.16], ["2023-04", 665.0, 51.89], ["2023-05", 759.0, 51.89], ["2023-06", 688.0, 51.89], ["2023-07", 690.0, 44.01], ["2023-08", 705.0, 44.01], ["2023-09", 735.0, 44.01], ["2023-10", 842.0, 48.51], ["2023-11", 945.0, 48.51], ["2023-12", 1015.0, 48.51], ["2024-01", 966.0, 57.68], ["2024-02", 1140.0, 57.68], ["2024-03", 1195.0, 57.68], ["2024-04", 992.0, 63.83], ["2024-05", 1235.0, 63.83], ["2024-06", 1400.0, 63.83], ["2024-07", 1220.0, 68.13], ["2024-08", 1240.0, 68.13], ["2024-09", 1175.0, 68.13], ["2024-10", 1290.0, 66.92], ["2024-11", 1255.0, 66.92], ["2024-12", 1415.0, 66.92], ["2025-01", 1465.0, 65.47], ["2025-02", 1515.0, 65.47], ["2025-03", 1390.0, 65.47], ["2025-04", 1350.0, 66.79], ["2025-05", 1260.0, 66.79], ["2025-06", 1250.0, 66.79], ["2025-07", 1370.0, 66.7], ["2025-08", 1370.0, 66.7], ["2025-09", 1315.0, 66.7], ["2025-10", 1310.0, 66.16], ["2025-11", 1395.0, 66.16], ["2025-12", 1430.0, 66.16], ["2026-01", 1760.0, 62.9], ["2026-02", 1945.0, 62.9], ["2026-03", 1490.0, 62.9], ["2026-04", 2610.0, 60.66], ["2026-05", 4310.0, 60.66], ["2026-06", 4245.0, 60.66], ["2026-07", 3555.0, 60.66], ["2026-08", 3925.0, 60.66], ["2026-09", 5285.0, 60.66]]}, "3037": {"name": "欣興", "method": "pe", "near": 10, "far": 20, "lots": 0, "core": 0, "bars": [["2026-08-28", 1200, 1230, 1070, 1110], ["2026-08-31", 999, 999, 999, 999], ["2026-09-01", 921, 994, 911, 971], ["2026-09-02", 955, 988, 948, 973], ["2026-09-03", 997, 1005, 923, 923], ["2026-09-04", 930, 940, 873, 902], ["2026-09-07", 939, 965, 911, 949], ["2026-09-08", 964, 975, 939, 954], ["2026-09-09", 980, 1005, 980, 993], ["2026-09-10", 993, 1005, 966, 994], ["2026-09-11", 969, 990, 958, 977], ["2026-09-14", 947, 979, 932, 970], ["2026-09-15", 969, 986, 951, 951], ["2026-09-16", 961, 971, 940, 961], ["2026-09-17", 979, 993, 940, 940], ["2026-09-18", 973, 990, 971, 981], ["2026-09-21", 999, 1055, 999, 1020], ["2026-09-22", 1120, 1120, 1105, 1120], ["2026-09-23", 1120, 1200, 1115, 1160], ["2026-09-24", 1155, 1190, 1145, 1185]], "rows": [["2021-10", 190.0, 8.98], ["2021-11", 228.0, 8.98], ["2021-12", 231.0, 8.98], ["2022-01", 200.0, 11.35], ["2022-02", 254.0, 11.35], ["2022-03", 249.0, 11.35], ["2022-04", 213.0, 15.52], ["2022-05", 215.5, 15.52], ["2022-06", 158.5, 15.52], ["2022-07", 158.5, 18.48], ["2022-08", 151.5, 18.48], ["2022-09", 117.5, 18.48], ["2022-10", 124.5, 20.08], ["2022-11", 155.5, 20.08], ["2022-12", 120.0, 20.08], ["2023-01", 136.5, 18.49], ["2023-02", 128.0, 18.49], ["2023-03", 147.5, 18.49], ["2023-04", 145.0, 14.76], ["2023-05", 180.5, 14.76], ["2023-06", 176.0, 14.76], ["2023-07", 184.5, 10.81], ["2023-08", 185.5, 10.81], ["2023-09", 173.5, 10.81], ["2023-10", 143.0, 7.88], ["2023-11", 177.0, 7.88], ["2023-12", 176.0, 7.88], ["2024-01", 176.0, 6.78], ["2024-02", 179.5, 6.78], ["2024-03", 191.0, 6.78], ["2024-04", 182.0, 6.27], ["2024-05", 182.5, 6.27], ["2024-06", 180.0, 6.27], ["2024-07", 179.5, 5.21], ["2024-08", 163.5, 5.21], ["2024-09", 144.0, 5.21], ["2024-10", 161.5, 3.34], ["2024-11", 149.0, 3.34], ["2024-12", 141.0, 3.34], ["2025-01", 139.0, 2.34], ["2025-02", 118.0, 2.34], ["2025-03", 92.5, 2.34], ["2025-04", 93.9, 1.31], ["2025-05", 106.0, 1.31], ["2025-06", 114.0, 1.31], ["2025-07", 137.5, 2.1], ["2025-08", 144.5, 2.1], ["2025-09", 151.5, 2.1], ["2025-10", 163.5, 4.38], ["2025-11", 186.5, 4.38], ["2025-12", 220.0, 4.38], ["2026-01", 378.5, 7.03], ["2026-02", 481.5, 7.03], ["2026-03", 444.5, 7.03], ["2026-04", 883.0, 15.39], ["2026-05", 1055.0, 15.39], ["2026-06", 1070.0, 15.39], ["2026-07", 787.0, 15.39], ["2026-08", 999.0, 15.39], ["2026-09", 1185.0, 15.39]]}, "2408": {"name": "南亞科", "method": "pb", "near": 12, "far": 24, "lots": 0, "core": 0, "bars": [["2026-08-28", 550, 569, 531, 540], ["2026-08-31", 546, 558, 531, 543], ["2026-09-01", 551, 551, 516, 518], ["2026-09-02", 509, 524, 502, 518], ["2026-09-03", 533, 539, 477.5, 477.5], ["2026-09-04", 490.5, 496, 470, 496], ["2026-09-07", 519, 525, 508, 517], ["2026-09-08", 527, 540, 524, 531], ["2026-09-09", 535, 535, 521, 523], ["2026-09-10", 517, 523, 507, 515], ["2026-09-11", 498, 498, 490, 493], ["2026-09-14", 477.5, 486, 470, 473], ["2026-09-15", 473.5, 476.5, 465.5, 465.5], ["2026-09-16", 476, 495, 475, 492.5], ["2026-09-17", 499, 504, 488, 488], ["2026-09-18", 508, 525, 508, 525], ["2026-09-21", 525, 528, 513, 516], ["2026-09-22", 530, 533, 496, 497], ["2026-09-23", 514, 526, 513, 515], ["2026-09-24", 509, 509, 495, 503]], "rows": [["2021-10", 66.5, 7.4, 55.85], ["2021-11", 74.2, 7.4, 55.85], ["2021-12", 78.1, 7.4, 55.85], ["2022-01", 72.0, 8.6, 58.45], ["2022-02", 77.1, 8.6, 58.45], ["2022-03", 69.2, 8.6, 58.45], ["2022-04", 65.6, 8.76, 57.4], ["2022-05", 66.8, 8.76, 57.4], ["2022-06", 49.4, 8.76, 57.4], ["2022-07", 52.3, 7.17, 59.29], ["2022-08", 53.4, 7.17, 59.29], ["2022-09", 48.95, 7.17, 59.29], ["2022-10", 54.5, 4.72, 58.41], ["2022-11", 56.8, 4.72, 58.41], ["2022-12", 51.2, 4.72, 58.41], ["2023-01", 57.8, 2.05, 55.62], ["2023-02", 58.4, 2.05, 55.62], ["2023-03", 66.5, 2.05, 55.62], ["2023-04", 67.8, -0.31, 55.72], ["2023-05", 73.5, -0.31, 55.72], ["2023-06", 70.8, -0.31, 55.72], ["2023-07", 72.3, -1.97, 55.52], ["2023-08", 66.6, -1.97, 55.52], ["2023-09", 65.6, -1.97, 55.52], ["2023-10", 64.7, -2.4, 53.88], ["2023-11", 75.0, -2.4, 53.88], ["2023-12", 78.0, -2.4, 53.88], ["2024-01", 68.7, -2.25, 54.16], ["2024-02", 67.3, -2.25, 54.16], ["2024-03", 67.7, -2.25, 54.16], ["2024-04", 66.1, -2.25, 54.14], ["2024-05", 64.5, -2.25, 54.14], ["2024-06", 69.7, -2.25, 54.14], ["2024-07", 57.1, -1.93, 53.17], ["2024-08", 52.7, -1.93, 53.17], ["2024-09", 47.35, -1.93, 53.17], ["2024-10", 42.3, -1.64, 53.27], ["2024-11", 33.45, -1.64, 53.27], ["2024-12", 29.25, -1.64, 53.27], ["2025-01", 30.1, -1.89, 52.89], ["2025-02", 38.65, -1.89, 52.89], ["2025-03", 37.4, -1.89, 52.89], ["2025-04", 36.0, -2.94, 49.91], ["2025-05", 45.55, -2.94, 49.91], ["2025-06", 51.2, -2.94, 49.91], ["2025-07", 44.55, -1.96, 50.78], ["2025-08", 47.0, -1.96, 50.78], ["2025-09", 73.0, -1.96, 50.78], ["2025-10", 132.5, 2.13, 54.99], ["2025-11", 146.0, 2.13, 54.99], ["2025-12", 193.0, 2.13, 54.99], ["2026-01", 326.5, 11.17, 62.25], ["2026-02", 285.5, 11.17, 62.25], ["2026-03", 198.5, 11.17, 62.25], ["2026-04", 215.5, 27.26, 93.49], ["2026-05", 347.0, 27.26, 93.49], ["2026-06", 452.5, 27.26, 93.49], ["2026-07", 360.5, 27.26, 93.49], ["2026-08", 543.0, 27.26, 93.49], ["2026-09", 503.0, 27.26, 93.49]]}};
+STOCKS['2330'].bars=TSEED;
+const KEY='mdog-multi-v3';
+function median(a){const b=[...a].sort((x,y)=>x-y),h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2;}
+const FWD={};
+const DPE={'2330':26,'2454':22,'3037':25,'2408':10};
+function newState(c){const m=STOCKS[c],last=m.rows[m.rows.length-1],pes=m.rows.filter(r=>r[2]>0).map(r=>r[1]/r[2]);
+  return {mode:'pe',eps:FWD[c]||last[2],pe:DPE[c],maN:20,near:m.near,far:m.far,lots:m.lots,core:m.core,cost:'',held:null,
+    bars:m.bars.map(([d,o,h,l,c])=>({d,o,h,l,c})),trades:[],range:0,lt:{peMode:'median',pe:'',fwd:'',scale:c==='2330'?'lin':'log',span:60,upd:[]}};}
+let ALL={cur:'2330',tab:'daily',st:{}};
+try{const r=localStorage.getItem(KEY);if(r)ALL=Object.assign(ALL,JSON.parse(r));
+  else{const o=localStorage.getItem('tsmc-master-dog-v2');if(o){const v=JSON.parse(o),st=newState('2330');ALL.tab=v.tab==='long'?'long':'daily';
+    ['mode','eps','pe','maN','near','far','lots','core','cost','held','bars','trades','range'].forEach(k=>{if(v[k]!==undefined)st[k]=v[k]});
+    if(v.lt)['peMode','pe','fwd','scale','span'].forEach(k=>{if(v.lt[k]!==undefined)st.lt[k]=v.lt[k]});ALL.st['2330']=st;}}}catch(e){}
+Object.keys(STOCKS).forEach(c=>{if(!ALL.st[c])ALL.st[c]=newState(c);const x=ALL.st[c];if(!x.lt)x.lt=newState(c).lt;if(!x.lt.upd)x.lt.upd=[];if(!x.bars||!x.bars.length)x.bars=newState(c).bars;});
+Object.keys(STOCKS).forEach(c=>{const x=ALL.st[c],have=new Set(x.bars.map(b=>b.d));STOCKS[c].bars.forEach(([d,o,h,l,cl])=>{if(!have.has(d))x.bars.push({d,o,h,l,c:cl});});x.bars.sort((a,z)=>a.d<z.d?-1:1);});
+if(!ALL.peDefault26){Object.keys(STOCKS).forEach(c=>{const x=ALL.st[c],r=STOCKS[c].rows;x.mode='pe';x.pe=26;x.eps=r[r.length-1][2];});ALL.peDefault26=true;}
+if(!ALL.fwdEps1){Object.keys(FWD).forEach(c=>{const x=ALL.st[c];x.mode='pe';x.pe=26;x.eps=FWD[c];});ALL.fwdEps1=true;}
+if(!ALL.dpe1){Object.keys(DPE).forEach(c=>{ALL.st[c].pe=DPE[c];});ALL.dpe1=true;}
+if(!ALL.fwd2330){ALL.st['2330'].eps=129.9;ALL.st['2330'].mode='pe';ALL.fwd2330=true;}
+if(!ALL.ttm1){Object.keys(STOCKS).forEach(c=>{const r=STOCKS[c].rows,x=ALL.st[c];x.eps=r[r.length-1][2];x.mode='pe';x.pe=DPE[c];});ALL.ttm1=true;}
+if(!STOCKS[ALL.cur])ALL.cur='2330';
+let S=ALL.st[ALL.cur];
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(ALL))}catch(e){}}
+function withStock(c,fn){const pc=ALL.cur,ps=S;ALL.cur=c;S=ALL.st[c];try{return fn()}finally{ALL.cur=pc;S=ps}}
+const $=id=>document.getElementById(id);
+const fmt=n=>isFinite(n)?Math.round(n).toLocaleString('zh-TW'):'—';
+const pct=(n,d=1)=>isFinite(n)?(n>0?'+':'')+n.toFixed(d)+'%':'—';
+const cls=v=>v>0?'up':v<0?'down':'';
+function upsert(b){S.bars=S.bars.filter(x=>x.d!==b.d);S.bars.push(b);S.bars.sort((a,z)=>a.d<z.d?-1:1);}
+
+function masters(){const c=S.bars.map(b=>b.c);return c.map((_,i)=>{if(S.mode==='pe')return S.eps*S.pe;const n=Math.max(1,+S.maN||20),s=c.slice(Math.max(0,i-n+1),i+1);return s.reduce((a,b)=>a+b,0)/s.length;});}
+function ma(arr,n){return arr.map((_,i)=>i<n-1?null:arr.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n);}
+
+function plan(M){const n=+S.near,f=+S.far,flex=Math.max(0,S.lots-S.core);
+  if(S.held===null||S.held>flex)S.held=flex; if(S.held<0)S.held=0;
+  const held=S.held,sold=flex-held;
+  const nextSell=held>0?M*(1+(sold===0?n:f)/100):null;
+  const nextBuy=sold>0?M*(1+(sold>=2?0:-n)/100):null;
+  return {n,f,flex,held,sold,nextSell,nextBuy};}
+function advise(P,M,p){const d=(P/M-1)*100;
+  if(+S.lots<=0){if(d<=-p.n)return{c:'down',a:'觀察：可考慮分批買進',w:`尚未持有。狗落後主人 ${pct(d)}，先確認主人沒變，再小量分批進場。`};
+    if(d>=p.n)return{c:'warn',a:'觀察：先不追',w:`尚未持有。狗跑在主人前面 ${pct(d)}，等它回到 ${fmt(M*(1+p.n/100))} 以下再考慮。`};
+    return{c:'hold',a:'觀察中',w:`尚未持有。狗在主人身邊（${pct(d)}），回到 ${fmt(M*(1-p.n/100))} 附近是比較有利的進場點。`};}
+  if(p.nextSell&&P>=p.nextSell)return{c:'up',a:'賣出 1 張機動部位',w:`股價 ${fmt(P)} 已達賣點 ${fmt(p.nextSell)}，狗跑在主人前面 ${pct(d)}。`};
+  if(p.nextBuy&&P<=p.nextBuy)return{c:'down',a:'買回 1 張',w:`股價 ${fmt(P)} 已回到買回點 ${fmt(p.nextBuy)}。動手前先確認營收與法說指引沒轉弱。`};
+  if(d<=-p.f&&p.sold===0)return{c:'down',a:'不動作，先檢查主人',w:`狗落後主人 ${pct(d)}。基本面沒變才是便宜；變了，就要重新設定主人。`};
+  const tgt=[p.nextSell&&`賣點 ${fmt(p.nextSell)}`,p.nextBuy&&`買回點 ${fmt(p.nextBuy)}`].filter(Boolean).join('、');
+  return{c:'hold',a:'不動作，繼續持有',w:`狗離主人 ${pct(d)}，還沒碰到${tgt?'下一個點位（'+tgt+'）':'任何點位'}。`};}
+
+function render(){
+  const B=S.bars; if(!B.length){return;}
+  const Ms=masters(),last=B.length-1,b=B[last],P=b.c,M=Ms[last],d=(P/M-1)*100;
+  const prev=B[last-1],chg=prev?P-prev.c:0;
+  const p=plan(M),A=advise(P,M,p);
+  $('asof').textContent=`資料日期 ${b.d}　主人 ${S.mode==='pe'?`EPS ${S.eps} × ${S.pe} 倍`:`${S.maN} 日均線`}`;
+  $('banner').style.borderLeftColor=`var(--${A.c})`;$('bAct').textContent=A.a;$('bAct').className='act '+A.c;$('bWhy').textContent=A.w;
+
+  // stats
+  const devs=B.map((x,i)=>(x.c/Ms[i]-1)*100);
+  const rng=B.slice(-10).map(x=>x.h-x.l),avgR=rng.reduce((a,z)=>a+z,0)/rng.length;
+  const ch=B.slice(-10).map((x,i,a)=>i?Math.abs(x.c-a[i-1].c):null).filter(v=>v!==null);
+  const avgC=ch.length?ch.reduce((a,z)=>a+z,0)/ch.length:avgR;
+  const k=Math.min(5,last),mom=d-devs[last-k];
+  let streak=0;for(let i=last;i>0;i--){const s=Math.sign(B[i].c-B[i-1].c);if(!s)break;if(!streak)streak=s;else if(s!==Math.sign(streak))break;else streak+=s;}
+  const hand=+S.core+p.held,val=P*hand*1000,pnl=+S.cost>0?(P-S.cost)*hand*1000:null;
+  $('kpis').innerHTML=[
+    ['收盤價',fmt(P),`<span class="${cls(chg)}">${chg>=0?'▲':'▼'} ${fmt(Math.abs(chg))}（${pct(prev?chg/prev.c*100:0,2)}）</span>`],
+    ['主人位置',fmt(M),`<span>${S.mode==='pe'?'基本面':'均線'}</span>`],
+    ['離主人',`<span class="${A.c}" style="font-size:inherit">${pct(d)}</span>`,`<span>近身 ±${p.n}%</span>`],
+    ['手上市值',fmt(val/10000)+' 萬',`<span>${hand} 張</span>`],
+    ['未實現損益',pnl===null?'—':`<span class="${cls(pnl)}" style="font-size:inherit">${pnl>=0?'+':''}${fmt(pnl/10000)} 萬</span>`,`<span>${pnl===null?'設定成本後顯示':'成本 '+fmt(S.cost)}</span>`]
+  ].map(([t,v,s])=>`<div class="kpi"><small>${t}</small><b>${v}</b>${s}</div>`).join('');
+
+  // gauge
+  const span=Math.max(30,Math.ceil(p.f*1.5/10)*10),pos=v=>Math.max(0,Math.min(100,(v+span)/(2*span)*100)),dp=pos(d);
+  let g='<div class="track"></div>';
+  [[-span,-p.f,'down'],[-p.f,-p.n,'down;opacity:.45'],[p.n,p.f,'up;opacity:.45'],[p.f,span,'up']].forEach(([a,z,c])=>{g+=`<div class="zone" style="left:${pos(a)}%;width:${pos(z)-pos(a)}%;background:var(--${c})"></div>`});
+  [-p.f,-p.n,0,p.n,p.f].forEach(t=>{g+=`<div class="tick" style="left:${pos(t)}%">${t>0?'+':''}${t}%</div>`});
+  g+=`<div class="rope" style="left:${Math.min(50,dp)}%;width:${Math.abs(dp-50)}%"></div><div class="fig" style="left:50%"><span>🧍</span>主人</div><div class="fig dog" style="left:${dp}%"><span>🐕</span>${pct(d,0)}</div>`;
+  $('gauge').innerHTML=g;
+  const moveTxt=Math.abs(mom)<1?'在原地打轉':(d>=0)===(mom>0)?'正在遠離主人':'正在往主人回頭';
+  const dist=(t,dir)=>t?`${fmt(Math.abs(t-P))} 元，約 ${Math.max(1,Math.round(Math.abs(t-P)/avgC))} 天正常波動`:'—';
+  $('dogStats').innerHTML=[
+    ['狗的動向',`${moveTxt}（${k} 日 ${mom>=0?'+':''}${mom.toFixed(1)} 個百分點）`],
+    ['連續',streak?`${Math.abs(streak)} 天${streak>0?'上漲':'下跌'}`:'—'],
+    ['平常一天動多少',`約 ${fmt(avgC)} 元（振幅約 ${fmt(avgR)} 元）`],
+    ['離下一個賣點',p.nextSell?(P>=p.nextSell?'已到達':dist(p.nextSell)):'機動部位已賣完'],
+    ['離下一個買回點',p.nextBuy?(P<=p.nextBuy?'已到達':dist(p.nextBuy)):'沒有需要買回的部位'],
+  ].map(([a,z])=>`<div class="stat"><em>${a}</em><strong>${z}</strong></div>`).join('');
+
+  drawK(Ms,p);drawDev(devs,p);drawLadder(P,M,p);drawDonut(p,P);scenario();tables(Ms);
+  $('didSell').disabled=p.held<=0;$('didBuy').disabled=p.sold<=0;
+  const nb=S.bars.length;document.querySelectorAll('#rangeSeg button').forEach(x=>{const r=+x.dataset.r;x.disabled=r>0&&r>nb;x.setAttribute('aria-pressed',String(r===+S.range||(x.disabled===false&&r===0&&+S.range>=nb)));});
+  $('kNote').hidden=nb>20;$('kNote').textContent=`目前有 ${nb} 天的資料（${S.bars[0].d.slice(5).replace('-','/')} 起），所以「近 20 日」和「全部」看起來一樣。每天收盤後會自動補上新的一天，「全部」就會越來越長。`;
+  $('holdHint').hidden=+S.lots>0;renderPicker();
+}
+
+function view(){const r=+S.range;return r&&r<S.bars.length?S.bars.length-r:0;}
+
+function drawK(Ms,p){
+  const s0=view(),B=S.bars.slice(s0),M=Ms.slice(s0),m5=ma(S.bars.map(b=>b.c),5).slice(s0);
+  const W=Math.max(320,Math.round($('kchart').clientWidth)||700),H=W<560?300:340,L=4,R=58,T=14,Bt=26,n=B.length,cw=(W-L-R)/n;
+  const curM=Ms[Ms.length-1];
+  let lo=Math.min(...B.map(b=>b.l),...M),hi=Math.max(...B.map(b=>b.h),...M);
+  [p.nextSell,p.nextBuy].forEach(v=>{if(v&&v<hi*1.04&&v>lo*0.96){lo=Math.min(lo,v);hi=Math.max(hi,v);}});
+  const pad=(hi-lo)*0.06;lo-=pad;hi+=pad;
+  const X=i=>L+cw*i+cw/2,Y=v=>T+(hi-v)/(hi-lo)*(H-T-Bt);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="台積電 K 線、主人位置與買賣點">`;
+  // grid
+  const step=[10,20,25,50,100,200,250,500].find(x=>(hi-lo)/x<=6)||1000;
+  for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step)s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--line)"/><text x="${W-R+6}" y="${Y(v)+4}" font-size="11" style="fill:var(--soft)">${fmt(v)}</text>`;
+  // band
+  const up=M.map((m,i)=>`${X(i)},${Y(m*(1+p.n/100))}`),dn=M.map((m,i)=>`${X(i)},${Y(m*(1-p.n/100))}`).reverse();
+  s+=`<defs><clipPath id="plot"><rect x="${L}" y="${T}" width="${W-L-R}" height="${H-T-Bt}"/></clipPath></defs>`;
+  if(n>1)s+=`<polygon clip-path="url(#plot)" points="${up.concat(dn).join(' ')}" style="fill:var(--band);opacity:.8"/>`;
+  s+=`<polyline points="${M.map((m,i)=>`${X(i)},${Y(m)}`).join(' ')}" fill="none" style="stroke:var(--leash);stroke-width:2.5;stroke-dasharray:7 4"/>`;
+  // triggers
+  [[p.nextSell,'up','賣'],[p.nextBuy,'down','買回']].forEach(([v,c,t])=>{if(!v)return;
+    if(v<=hi&&v>=lo)s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--${c});stroke-width:1.5;stroke-dasharray:3 3"/><text x="${L+4}" y="${Y(v)-5}" font-size="12" font-weight="700" style="fill:var(--${c})">${t} ${fmt(v)}</text>`;
+    else s+=`<text x="${L+4}" y="${v>hi?T+12:H-Bt-6}" font-size="12" font-weight="700" style="fill:var(--${c})">${t} ${fmt(v)} ${v>hi?'↑ 在圖外':'↓ 在圖外'}</text>`;});
+  // candles
+  const bw=Math.max(2,Math.min(14,cw*0.62));
+  B.forEach((b,i)=>{const c=b.c>=b.o?'up':'down',x=X(i),y1=Y(Math.max(b.o,b.c)),y2=Y(Math.min(b.o,b.c));
+    s+=`<line x1="${x}" x2="${x}" y1="${Y(b.h)}" y2="${Y(b.l)}" style="stroke:var(--${c});stroke-width:1.2"/><rect x="${x-bw/2}" y="${y1}" width="${bw}" height="${Math.max(1.5,y2-y1)}" style="fill:var(--${c})"/>`;});
+  const pts=m5.map((v,i)=>v===null?null:`${X(i)},${Y(v)}`).filter(Boolean);
+  if(pts.length>1)s+=`<polyline points="${pts.join(' ')}" fill="none" style="stroke:var(--ma);stroke-width:1.6"/>`;
+  // trades
+  S.trades.forEach(t=>{const i=B.findIndex(b=>b.d===t.d);if(i<0)return;const sell=t.t==='sell',y=sell?Y(B[i].h)-12:Y(B[i].l)+14;
+    s+=`<circle cx="${X(i)}" cy="${y}" r="9" style="fill:var(--${sell?'up':'down'})"/><text x="${X(i)}" y="${y+4}" font-size="11" text-anchor="middle" style="fill:var(--panel)" font-weight="700">${sell?'賣':'買'}</text>`;});
+  // last price tag
+  const lp=B[n-1].c;s+=`<rect x="${W-R+2}" y="${Y(lp)-10}" width="${R-4}" height="20" rx="4" style="fill:var(--ink)"/><text x="${W-R+6}" y="${Y(lp)+4}" font-size="12" font-weight="700" style="fill:var(--panel)">${fmt(lp)}</text>`;
+  // x labels
+  const every=Math.ceil(n/6);B.forEach((b,i)=>{if(i%every===0||i===n-1)s+=`<text x="${X(i)}" y="${H-8}" font-size="11" text-anchor="middle" style="fill:var(--soft)">${b.d.slice(5).replace('-','/')}</text>`;});
+  // hit areas
+  B.forEach((b,i)=>{s+=`<rect data-i="${i+s0}" x="${L+cw*i}" y="${T}" width="${cw}" height="${H-T-Bt}" fill="transparent" style="cursor:pointer"/>`;});
+  s+='</svg>';$('kchart').innerHTML=s;
+  $('kchart').querySelectorAll('rect[data-i]').forEach(r=>{const show=()=>{const i=+r.dataset.i,b=S.bars[i],pv=S.bars[i-1],dv=(b.c/Ms[i]-1)*100;
+    $('tip').innerHTML=`${b.d}　開 ${fmt(b.o)}　高 ${fmt(b.h)}　低 ${fmt(b.l)}　收 <b class="${pv?cls(b.c-pv.c):''}">${fmt(b.c)}</b>　離主人 ${pct(dv)}`;};
+    r.addEventListener('click',show);r.addEventListener('mouseenter',show);});
+}
+
+function drawDev(devs,p){
+  const s0=view(),D=devs.slice(s0),W=Math.max(320,Math.round($('devchart').clientWidth)||700),H=150,L=4,R=58,T=10,Bt=10,n=D.length,cw=(W-L-R)/n;
+  const m=Math.max(p.f,...D.map(Math.abs))*1.1,Y=v=>T+(m-v)/(2*m)*(H-T-Bt),X=i=>L+cw*i+cw/2;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="每日偏離主人的百分比">`;
+  [[p.f,'up'],[p.n,'warn'],[-p.n,'warn'],[-p.f,'down']].forEach(([v,c])=>{s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--${c});stroke-dasharray:4 4;opacity:.7"/><text x="${W-R+6}" y="${Y(v)+4}" font-size="11" style="fill:var(--soft)">${v>0?'+':''}${v}%</text>`;});
+  s+=`<line x1="${L}" x2="${W-R}" y1="${Y(0)}" y2="${Y(0)}" style="stroke:var(--leash);stroke-width:1.5"/><text x="${W-R+6}" y="${Y(0)+4}" font-size="11" style="fill:var(--leash)">主人</text>`;
+  const bw=Math.max(2,Math.min(14,cw*0.62));
+  D.forEach((v,i)=>{const y=Y(Math.max(v,0)),h=Math.abs(Y(v)-Y(0)),c=v>=0?'up':'down',o=Math.abs(v)>=p.n?1:.45;
+    s+=`<rect x="${X(i)-bw/2}" y="${y}" width="${bw}" height="${Math.max(1,h)}" style="fill:var(--${c});opacity:${o}"/>`;});
+  s+='</svg>';$('devchart').innerHTML=s;
+}
+
+function drawLadder(P,M,p){
+  const lv=[[M*(1+p.f/100),'第二賣點','up'],[M*(1+p.n/100),'第一賣點','warn'],[M,'主人（第一買回）','hold'],[M*(1-p.n/100),'第二買回','warn'],[M*(1-p.f/100),'跑太遠（檢查主人）','down']];
+  const W=340,H=260,T=16,Bt=16,hi=Math.max(lv[0][0],P)*1.01,lo=Math.min(lv[4][0],P)*0.99,Y=v=>T+(hi-v)/(hi-lo)*(H-T-Bt);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="點位梯子與目前股價">`;
+  s+=`<line x1="120" x2="120" y1="${T}" y2="${H-Bt}" style="stroke:var(--line);stroke-width:6;stroke-linecap:round"/>`;
+  lv.forEach(([v,t,c])=>{const act=(v===p.nextSell||v===p.nextBuy);
+    s+=`<line x1="104" x2="136" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--${c});stroke-width:${act?4:2}"/><text x="96" y="${Y(v)+5}" font-size="14" text-anchor="end" font-weight="700" style="fill:var(--${c})">${fmt(v)}</text><text x="146" y="${Y(v)+5}" font-size="13" style="fill:var(--${act?'ink':'soft'})" font-weight="${act?700:400}">${t}${act?'　← 下一步':''}</text>`;});
+  s+=`<g transform="translate(120 ${Y(P)})"><circle r="11" style="fill:var(--ink)"/><text y="5" font-size="13" text-anchor="middle">🐕</text></g><text x="96" y="${Y(P)-14}" font-size="12" text-anchor="end" style="fill:var(--ink)">現價 ${fmt(P)}</text>`;
+  s+='</svg>';$('ladder').innerHTML=s;
+}
+
+function drawDonut(p,P){
+  const parts=[[+S.core,'核心（不動）','ink'],[p.held,'機動（持有中）','hold'],[p.sold,'機動（已賣出）','leash']],tot=parts.reduce((a,z)=>a+z[0],0)||1;
+  const r=52,C=2*Math.PI*r;let off=0,s=`<svg viewBox="0 0 320 140" role="img" aria-label="持股分配"><g transform="translate(70 70) rotate(-90)">`;
+  parts.forEach(([v,,c])=>{if(!v)return;const len=v/tot*C;s+=`<circle r="${r}" fill="none" style="stroke:var(--${c});stroke-width:22" stroke-dasharray="${len-2} ${C-len+2}" stroke-dashoffset="${-off}"/>`;off+=len;});
+  s+=`</g><text x="70" y="68" font-size="24" font-weight="900" text-anchor="middle" style="fill:var(--ink)">${+S.core+p.held}</text><text x="70" y="88" font-size="12" text-anchor="middle" style="fill:var(--soft)">張在手上</text>`;
+  parts.forEach(([v,t,c],i)=>{s+=`<rect x="150" y="${30+i*30}" width="14" height="14" rx="3" style="fill:var(--${c})"/><text x="172" y="${42+i*30}" font-size="14" style="fill:var(--ink)">${t} ${v} 張</text>`;});
+  s+='</svg>';$('donut').innerHTML=s;
+}
+
+function scenario(){
+  const Ms=masters(),M=Ms[Ms.length-1],P0=S.bars[S.bars.length-1].c,v=+$('sc').value,P=P0*(1+v/100),p=plan(M),A=advise(P,M,p),hand=+S.core+p.held;
+  $('scPct').textContent=(v>0?'+':'')+v+'%';$('scPct').className=cls(v);
+  $('scOut').innerHTML=[['假設股價',fmt(P)],['離主人',pct((P/M-1)*100)],['市值變化',`<span class="${cls(v)}">${v>=0?'+':''}${fmt((P-P0)*hand*1000/10000)} 萬</span>`],['建議',`<span class="${A.c}">${A.a}</span>`]]
+    .map(([a,z])=>`<div class="kpi"><small>${a}</small><b style="font-size:1.15rem">${z}</b></div>`).join('');
+}
+
+function tables(Ms){
+  $('tradeTbl').innerHTML=S.trades.length?'<tr><th>日期</th><th>動作</th><th style="text-align:right">價格</th><th></th></tr>'+S.trades.map((t,i)=>`<tr><td>${t.d}</td><td class="${t.t==='sell'?'up':'down'}">${t.t==='sell'?'賣出':'買回'} 1 張</td><td class="n">${fmt(t.p)}</td><td><button class="x" data-dt="${i}" aria-label="刪除這筆">刪除</button></td></tr>`).join(''):'<tr><td class="note">還沒有交易紀錄。</td></tr>';
+  $('barTbl').innerHTML='<tr><th>日期</th><th style="text-align:right">開</th><th style="text-align:right">高</th><th style="text-align:right">低</th><th style="text-align:right">收</th><th style="text-align:right">離主人</th><th></th></tr>'+
+    S.bars.map((b,i)=>[b,i]).reverse().map(([b,i])=>{const dv=(b.c/Ms[i]-1)*100;return `<tr><td>${b.d}</td><td class="n">${fmt(b.o)}</td><td class="n">${fmt(b.h)}</td><td class="n">${fmt(b.l)}</td><td class="n">${fmt(b.c)}</td><td class="n ${cls(dv)}">${pct(dv)}</td><td><button class="x" data-db="${b.d}" aria-label="刪除這天">刪除</button></td></tr>`}).join('');
+  document.querySelectorAll('[data-dt]').forEach(x=>x.onclick=()=>{const t=S.trades[+x.dataset.dt];S.held+=t.t==='sell'?1:-1;S.trades.splice(+x.dataset.dt,1);persist();render();});
+  document.querySelectorAll('[data-db]').forEach(x=>x.onclick=()=>{if(S.bars.length<=1)return;S.bars=S.bars.filter(b=>b.d!==x.dataset.db);persist();render();});
+}
+
+// settings
+const F=['mode','eps','pe','maN','near','far','lots','core','cost'];
+function syncMode(){document.querySelectorAll('[data-m]').forEach(l=>l.hidden=l.dataset.m!==S.mode);}
+F.forEach(k=>{const el=$(k);el.value=S[k];el.addEventListener('input',()=>{S[k]=el.tagName==='SELECT'?el.value:(el.value===''?'':+el.value);syncMode();persist();render();});});
+$('sc').addEventListener('input',scenario);
+document.querySelectorAll('#rangeSeg button').forEach(x=>x.onclick=()=>{S.range=+x.dataset.r;persist();render();});
+function lastBar(){return S.bars[S.bars.length-1];}
+$('didSell').onclick=()=>{if(S.held>0){S.held--;const b=lastBar();S.trades.push({d:b.d,t:'sell',p:b.c});persist();render();}};
+$('didBuy').onclick=()=>{const flex=Math.max(0,S.lots-S.core);if(S.held<flex){S.held++;const b=lastBar();S.trades.push({d:b.d,t:'buy',p:b.c});persist();render();}};
+// input
+(function(){const t=new Date(Date.now()+8*3600e3).toISOString().slice(0,10);$('fDate').value=t;})();
+$('saveBar').onclick=()=>{const d=$('fDate').value,c=+$('fC').value;if(!d||!(c>0)){$('saveMsg').textContent='請填日期與收盤價。';return;}
+  const o=+$('fO').value||c,h=Math.max(+$('fH').value||c,o,c),l=Math.min(+$('fL').value||c,o,c);upsert({d,o,h,l,c});persist();render();
+  $('saveMsg').textContent=`已記錄 ${d} 收盤 ${fmt(c)}。`;['fC','fO','fH','fL'].forEach(k=>$(k).value='');};
+function parseDate(s){let m=s.match(/^(\d{2,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);if(!m)return null;let y=+m[1];if(y<1911)y+=1911;return `${y}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;}
+$('doPaste').onclick=()=>{let ok=0;$('paste').value.split(/\n/).forEach(line=>{const parts=line.replace(/,(?=\d{3})/g,'').split(/[\s,|\t"]+/).filter(Boolean);if(!parts.length)return;const d=parseDate(parts[0]);if(!d)return;
+  const nums=parts.slice(1).map(x=>parseFloat(x.replace(/[+X]/g,''))).filter(x=>isFinite(x));let o,h,l,c;
+  if(nums.length>=7){[o,h,l,c]=nums.slice(2,6);}else if(nums.length>=4){[o,h,l,c]=nums.slice(0,4);}else if(nums.length>=1){c=o=h=l=nums[0];}else return;
+  if(c>0){upsert({d,o,h,l,c});ok++;}});persist();render();$('paste').value='';$('saveMsg').textContent=`已匯入 ${ok} 天。`;};
+$('reset').onclick=()=>{if(confirm('還原後，你自己輸入的資料與交易紀錄都會清除。確定嗎？')){const keep={mode:S.mode,eps:S.eps,pe:S.pe,maN:S.maN,near:S.near,far:S.far,lots:S.lots,core:S.core,cost:S.cost};S=Object.assign(newState(ALL.cur),keep,{lt:S.lt});ALL.st[ALL.cur]=S;persist();render();}};
+
+// ===== 五年長期 =====
+let BANDS=[],CUR_T={m:'本益比',b:'近四季 EPS'};
+function basisAt(m,k){let v=null;for(const r of STOCKS[ALL.cur].rows){if(r[0]<=m)v=r[k];else break;}
+  const u=(S.lt.upd||[]).filter(x=>x.m<=m).sort((a,z)=>a.m<z.m?-1:1).pop();if(u)v=u.v;return v;}
+function monthly(){const meta=STOCKS[ALL.cur],k=meta.method==='pb'?3:2,M={};meta.rows.forEach(r=>M[r[0]]=r[1]);S.bars.forEach(b=>{M[b.d.slice(0,7)]=b.c;});
+  const ks=Object.keys(M).sort(),last=ks[ks.length-1],[ly,lm]=last.split('-').map(Number),start=`${ly-5}-${String(lm).padStart(2,'0')}`;
+  return ks.filter(x=>x>start).map(m=>{const e=basisAt(m,k);return{m,c:M[m],e,pe:e>0?M[m]/e:null};}).filter(r=>r.e>0);}
+function computeLong(){const pb=STOCKS[ALL.cur].method==='pb',R=monthly();if(!R.length)return null;
+  const medPE=median(R.map(r=>r.pe)),PE=S.lt.peMode==='custom'&&+S.lt.pe>0?+S.lt.pe:medPE;
+  R.forEach(r=>{r.M=r.e*PE;r.d=(r.c/r.M-1)*100;});return{R,PE,medPE,pb,L:R[R.length-1]};}
+function pct0(n){return (n>0?'+':'')+Math.round(n)+'%';}
+
+function renderLong(){
+  const X=computeLong();if(!X)return;const{R,PE,medPE,pb,L}=X;
+  const T=pb?{m:'本淨比',b:'每股淨值',s:'淨值',f:'未來一年每股淨值'}:{m:'本益比',b:'近四季 EPS',s:'EPS',f:'未來一年 EPS'};CUR_T=T;const dp=pb?2:1;
+  BANDS=[0.5,0.75,1,1.3,1.6,2].map(x=>pb?Math.round(x*medPE*10)/10:Math.round(x*medPE));
+  const devs=R.map(r=>r.d),maxI=devs.indexOf(Math.max(...devs)),minI=devs.indexOf(Math.min(...devs));
+  const further=devs.filter(v=>v>L.d).length;
+  const yr=R.find(r=>r.m===`${+L.m.slice(0,4)-1}${L.m.slice(4)}`),g=yr?(L.e/yr.e-1)*100:null;
+  const fwd=+S.lt.fwd>0?+S.lt.fwd:null,fM=fwd?fwd*PE:null,fd=fM?(L.c/fM-1)*100:null;
+  let c,a;if(L.d>=30){c='up';a=`狗跑在主人前面很遠（${pct0(L.d)}）`}else if(L.d>=10){c='warn';a=`狗跑在主人前面（${pct0(L.d)}）`}else if(L.d>-10){c='hold';a=`狗在主人身邊（${pct0(L.d)}）`}else if(L.d>-30){c='warn';a=`狗落在主人後面（${pct0(L.d)}）`}else{c='down';a=`狗落後主人很遠（${pct0(L.d)}）`}
+  $('lBanner').style.borderLeftColor=`var(--${c})`;$('lAct').textContent=a;$('lAct').className='act '+c;
+  $('lWhy').textContent=`過去五年 ${R.length} 個月裡，有 ${R.length-further} 個月狗離主人比現在近${further?`，只有 ${further} 個月跑得比現在更遠`:'，現在是五年來跑最遠的時候'}。`;
+  $('lKpis').innerHTML=[['長期主人位置',fmt(L.M),`${T.s} ${L.e.toFixed(2)} × ${PE.toFixed(dp)} 倍`],['目前'+T.m,L.pe.toFixed(dp)+' 倍',`五年中位 ${medPE.toFixed(dp)} 倍`],[T.b,L.e.toFixed(2),g===null?'':`<span class="${cls(g)}">年增 ${pct0(g)}</span>`],['五年最遠',`<span class="up" style="font-size:inherit">${pct0(devs[maxI])}</span>`,R[maxI].m.replace('-','/')],['五年最落後',`<span class="down" style="font-size:inherit">${pct0(devs[minI])}</span>`,R[minI].m.replace('-','/')]]
+    .map(([t,v,x])=>`<div class="kpi"><small>${t}</small><b>${v}</b><span>${x}</span></div>`).join('');
+  $('riverTitle').textContent=T.m+'河流圖';
+  $('riverNote').textContent=`每條色帶是「${T.m} × ${T.b}」算出的價位，就像不同長度的繩子。粗棕虛線是主人（五年中位${T.m}），黑線是狗（每月收盤）。`+(pb?'記憶體是景氣循環股，獲利會在賺錢和虧錢之間大幅擺盪，用本益比會失真，所以改用公司的淨值當主人。':'');
+  $('basisTitle').textContent=`主人走多快（${T.b}）`;
+  $('lPeLbl').textContent='主人用哪個'+T.m;$('lPeCLbl').textContent=`自訂${T.m}（倍）`;$('lFwdLbl').textContent=T.f+' 預估（可不填）';
+  $('fwdNote').textContent=`填了${T.f}，圖的最右邊會多一段虛線，顯示「主人往前看」會走到哪裡。獲利成長很快的時候，往前看的主人通常比過去的數字更準。`;
+  $('uLbl').textContent=pb?'每股淨值（元）':'近四季 EPS（元）';
+  $('srcNote').textContent=`預載資料：每月收盤與${pb?'每股淨值':'近四季 EPS'}取自 Goodinfo 河流圖資料${ALL.cur==='2330'?'（台積電 EPS 以法說會公布數字計算）':''}。每天收盤後會自動更新本月的收盤價和最新數字，財報公布後主人線會自己往前走。`;
+  drawRiver(R,PE,medPE,fM);drawLDev(R,maxI,minI);drawHist(R,L);drawBasis(R,T);
+  const lines=[];
+  lines.push(`以五年來的「正常${T.m}」${PE.toFixed(dp)} 倍來算，主人現在在 <b>${fmt(L.M)}</b> 元，股價 ${fmt(L.c)} 元，狗在主人${L.d>=0?'前面':'後面'} <b>${Math.abs(L.d).toFixed(0)}%</b>。`);
+  if(g!==null)lines.push(g>=20?`主人走得很快：${T.b}年增 ${pct0(g)}。主人跑得快，狗在前面的距離會被慢慢追上，不一定要靠股價下跌來拉近。`:g>=0?`主人還在往前走（${T.b}年增 ${pct0(g)}），但速度不快。`:`要留意：主人在往後退（${T.b}年減 ${Math.round(-g)}%），這時候狗落後不代表便宜。`);
+  if(fM)lines.push(`如果往前看，用${T.f} ${fwd} 元計算，主人會走到 <b>${fmt(fM)}</b> 元，狗離主人剩 <b>${pct0(fd)}</b>。`);
+  else if(L.d>=100)lines.push(`狗跑到主人前面超過一倍，通常代表市場在押注未來獲利會大幅成長，過去的數字已經跟不上。建議在下方設定填入「${T.f}」，看看往前看的主人在哪裡。`);
+  const own=+S.lots>0;
+  lines.push(own?(L.d>=20?'對持股的意義：長期看不便宜，機動部位照每日點位分批減碼是合理的；核心部位靠的是主人繼續成長，不需要因為偏離就全部下車。':L.d<=-20?'對持股的意義：長期看便宜，只要主人沒有轉向，是把之前賣掉的機動部位接回來、甚至加碼的區間。':'對持股的意義：長期位置不極端，以每日操作的點位為主。')
+    :(L.d>=20?'目前沒有持股：長期位置偏貴，等狗回到主人附近再考慮進場比較穩。':L.d<=-20?'目前沒有持股：長期位置便宜，只要主人沒有轉向，可以考慮分批進場。':'目前沒有持股：長期位置不極端，可以搭配每日操作的點位觀察進場時機。'));
+  $('lRead').innerHTML=lines.map(x=>`<p class="read" style="margin-bottom:10px">${x}</p>`).join('');
+  document.querySelectorAll('#scaleSeg button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.s===S.lt.scale)));
+  document.querySelectorAll('#spanSeg button').forEach(x=>x.setAttribute('aria-pressed',String(+x.dataset.p===(+S.lt.span||60))));
+  renderPicker();
+}
+const BCOL=['#2E7D32','#7CB342','#C0CA33','#FDD835','#FB8C00','#E53935'];
+function drawRiver(Rall,PE,medPE,fM){
+  const span=+S.lt.span||60,R=Rall.slice(-span);
+  const host=$('river'),W=Math.max(320,Math.round(host.clientWidth)||800),mob=W<560,H=mob?440:420,Lp=4,Rp=mob?52:66,T=16,Bt=28;
+  const HALO='paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round';
+  const n=R.length+(fM?1:0),xw=(W-Lp-Rp)/(n-1),X=i=>Lp+i*xw;
+  const log=S.lt.scale==='log';const all=[...R.map(r=>r.c),...R.map(r=>r.e*BANDS[0]),...R.map(r=>r.e*BANDS[BANDS.length-1])].concat(fM?[fM]:[]);
+  let lo=Math.min(...all)*0.95,hi=Math.max(...all)*1.04;const tf=v=>log?Math.log(v):v;const Y=v=>T+(tf(hi)-tf(v))/(tf(hi)-tf(lo))*(H-T-Bt);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="本益比河流圖">`;
+  const ticks=log?(()=>{const t=[];for(let k=Math.floor(Math.log10(lo));k<=Math.ceil(Math.log10(hi));k++)[1,2,5].forEach(m=>{const v=m*Math.pow(10,k);if(v>lo&&v<hi)t.push(v)});return t;})():(()=>{const st=[100,200,250,500,1000].find(x=>(hi-lo)/x<=(mob?5:7));const t=[];for(let v=Math.ceil(lo/st)*st;v<hi;v+=st)t.push(v);return t;})();
+  ticks.forEach(v=>{s+=`<line x1="${Lp}" x2="${W-Rp}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--line)"/>`;});
+  const yrs=R.map((r,i)=>[r,i]).filter(([r])=>r.m.endsWith('-01'));
+  yrs.forEach(([r,i])=>{s+=`<line x1="${X(i)}" x2="${X(i)}" y1="${T}" y2="${H-Bt}" style="stroke:var(--line);stroke-dasharray:2 4"/><text x="${X(i)}" y="${H-8}" font-size="12" text-anchor="middle" style="fill:var(--soft)">${r.m.slice(0,4)}</text>`;});
+  for(let k=0;k<BANDS.length-1;k++){const up=R.map((r,i)=>`${X(i)},${Y(r.e*BANDS[k+1])}`),dn=R.map((r,i)=>`${X(i)},${Y(r.e*BANDS[k])}`).reverse();
+    s+=`<polygon points="${up.concat(dn).join(' ')}" fill="${BCOL[k]}" opacity=".16"/>`;}
+  BANDS.forEach((b,k)=>{s+=`<polyline points="${R.map((r,i)=>`${X(i)},${Y(r.e*b)}`).join(' ')}" fill="none" stroke="${BCOL[k]}" stroke-width="1" opacity=".7"/>`;});
+  s+=`<polyline points="${R.map((r,i)=>`${X(i)},${Y(r.M)}`).join(' ')}" fill="none" style="stroke:var(--leash);stroke-width:3;stroke-dasharray:8 5"/>`;
+  const li=R.length-1,lr=R[li];
+  if(fM){s+=`<line x1="${X(li)}" y1="${Y(lr.M)}" x2="${X(li+1)}" y2="${Y(fM)}" style="stroke:var(--leash);stroke-width:3;stroke-dasharray:2 5"/><circle cx="${X(li+1)}" cy="${Y(fM)}" r="5" style="fill:var(--leash)"/>`;}
+  const step=span<=24?3:6;R.forEach((r,i)=>{if(i%step===0||i===li)s+=`<line x1="${X(i)}" x2="${X(i)}" y1="${Y(r.c)}" y2="${Y(r.M)}" style="stroke:var(--leash);stroke-width:1;opacity:.5"/>`;});
+  s+=`<polyline points="${R.map((r,i)=>`${X(i)},${Y(r.c)}`).join(' ')}" fill="none" style="stroke:var(--ink);stroke-width:3;stroke-linejoin:round"/>`;
+  // extremes within view
+  const dv=R.map(r=>r.d),mxI=dv.indexOf(Math.max(...dv)),mnI=dv.indexOf(Math.min(...dv));
+  [[mxI,'up','跑最遠'],[mnI,'down','落後最遠']].forEach(([i,c,t])=>{if(i===li)return;const r=R[i],x=X(i),right=x<W*0.55,up=c==='up';
+    const tx=right?x+10:x-10;let ty=up?Y(r.c)-12:Y(r.c)+20;if(ty>H-Bt-4)ty=Y(r.c)-10;if(ty<T+10)ty=Y(r.c)+18;
+    s+=`<circle cx="${x}" cy="${Y(r.c)}" r="5" style="fill:var(--${c})"/><text x="${tx}" y="${ty}" font-size="13" font-weight="700" text-anchor="${right?'start':'end'}" style="fill:var(--${c});${HALO}">${t} ${pct0(r.d)}</text>`;});
+  s+=`<g transform="translate(${X(li)} ${Y(lr.c)})"><circle r="11" style="fill:var(--ink)"/><text y="5" font-size="12" text-anchor="middle">🐕</text></g>`;
+  // price ticks (left, with halo)
+  ticks.forEach(v=>{s+=`<text x="${Lp+2}" y="${Y(v)-4}" font-size="11" style="fill:var(--soft);${HALO}">${fmt(v)}</text>`;});
+  // right labels with collision avoidance
+  const items=[{y:Y(lr.c),tag:true,t:fmt(lr.c)}];
+  if(fM)items.push({y:Y(fM),t:'往前看',c:'var(--leash)'});
+  BANDS.forEach((b,k)=>{const y=Y(lr.e*b);if(y>T-4&&y<H-Bt+4)items.push({y,t:b+'倍',c:BCOL[k]});});
+  items.sort((a,z)=>a.y-z.y);const gap=17;
+  for(let i=1;i<items.length;i++)if(items[i].y-items[i-1].y<gap)items[i].y=items[i-1].y+gap;
+  const over=items.length?items[items.length-1].y-(H-Bt):0;if(over>0)items.forEach(it=>it.y-=over);
+  for(let i=items.length-2;i>=0;i--)if(items[i+1].y-items[i].y<gap)items[i].y=items[i+1].y-gap;
+  items.forEach(it=>{if(it.tag)s+=`<rect x="${W-Rp+2}" y="${it.y-10}" width="${Rp-4}" height="20" rx="4" style="fill:var(--ink)"/><text x="${W-Rp+6}" y="${it.y+4}" font-size="12" font-weight="700" style="fill:var(--panel)">${it.t}</text>`;
+    else s+=`<text x="${W-Rp+6}" y="${it.y+4}" font-size="12" font-weight="700" style="fill:${it.c}">${it.t}</text>`;});
+  R.forEach((r,i)=>{s+=`<rect data-li="${i}" x="${X(i)-xw/2}" y="${T}" width="${xw}" height="${H-T-Bt}" fill="transparent" style="cursor:pointer"/>`;});
+  s+='</svg>';host.innerHTML=s;
+  host.querySelectorAll('rect[data-li]').forEach(el=>{const f=()=>{const r=R[+el.dataset.li];$('lTip').innerHTML=`${r.m.replace('-','/')}　收盤 <b>${fmt(r.c)}</b>　本益比 ${r.pe.toFixed(1)} 倍　主人 ${fmt(r.M)}　離主人 <b class="${cls(r.d)}">${pct0(r.d)}</b>`;};el.addEventListener('click',f);el.addEventListener('mouseenter',f);});
+  $('riverLegend').innerHTML=`<span><i style="background:var(--ink)"></i>狗（每月收盤）</span><span><i style="background:var(--leash)"></i>主人（${PE.toFixed(1)} 倍）</span><span>色帶：${CUR_T.m} ${BANDS[0]}～${BANDS[5]} 倍</span>`;
+}
+function drawLDev(R,maxI,minI){
+  const host=$('lDev'),W=Math.max(300,Math.round(host.clientWidth)||600),H=200,Lp=4,Rp=48,T=14,Bt=22,n=R.length,cw=(W-Lp-Rp)/n;
+  const m=Math.max(40,...R.map(r=>Math.abs(r.d)))*1.1,Y=v=>T+(m-v)/(2*m)*(H-T-Bt),X=i=>Lp+cw*i+cw/2;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="五年每月偏離主人百分比">`;
+  [40,20,-20,-40].forEach(v=>{s+=`<line x1="${Lp}" x2="${W-Rp}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--${v>0?'up':'down'});stroke-dasharray:4 4;opacity:${Math.abs(v)===40?.8:.45}"/><text x="${W-Rp+4}" y="${Y(v)+4}" font-size="11" style="fill:var(--soft)">${v>0?'+':''}${v}%</text>`;});
+  s+=`<line x1="${Lp}" x2="${W-Rp}" y1="${Y(0)}" y2="${Y(0)}" style="stroke:var(--leash);stroke-width:1.5"/><text x="${W-Rp+4}" y="${Y(0)+4}" font-size="11" style="fill:var(--leash)">主人</text>`;
+  const bw=Math.max(2,cw*.7);R.forEach((r,i)=>{const c=r.d>=0?'up':'down';s+=`<rect x="${X(i)-bw/2}" y="${Y(Math.max(r.d,0))}" width="${bw}" height="${Math.max(1,Math.abs(Y(r.d)-Y(0)))}" style="fill:var(--${c});opacity:${Math.abs(r.d)>=20?1:.45}"/>`;});
+  [[maxI,-6],[minI,14]].forEach(([i,dy])=>{const r=R[i];s+=`<text x="${Math.min(W-Rp-20,Math.max(24,X(i)))}" y="${Y(r.d)+dy}" font-size="11" text-anchor="middle" style="fill:var(--ink)">${r.m.slice(2).replace('-','/')}</text>`;});
+  R.forEach((r,i)=>{if(r.m.endsWith('-01'))s+=`<text x="${X(i)}" y="${H-6}" font-size="11" text-anchor="middle" style="fill:var(--soft)">${r.m.slice(0,4)}</text>`;});
+  s+='</svg>';host.innerHTML=s;
+}
+function drawHist(R,L){
+  const host=$('lHist'),W=Math.max(300,Math.round(host.clientWidth)||600),H=150,Lp=10,Rp=10,T=20,Bt=34;
+  const lo=Math.floor(Math.min(...R.map(r=>r.d),-40)/10)*10,hi=Math.ceil(Math.max(...R.map(r=>r.d),40)/10)*10,bins=[];
+  for(let v=lo;v<hi;v+=10)bins.push({a:v,n:R.filter(r=>r.d>=v&&r.d<v+10).length});
+  const mx=Math.max(...bins.map(b=>b.n)),bw=(W-Lp-Rp)/bins.length,X=v=>Lp+(v-lo)/(hi-lo)*(W-Lp-Rp);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="五年偏離分布">`;
+  bins.forEach((b,i)=>{const h=b.n/mx*(H-T-Bt),c=b.a>=0?'up':'down';s+=`<rect x="${Lp+i*bw+2}" y="${H-Bt-h}" width="${bw-4}" height="${h}" rx="3" style="fill:var(--${c});opacity:${b.a>=-10&&b.a<10?.35:.7}"/>${b.n?`<text x="${Lp+i*bw+bw/2}" y="${H-Bt-h-4}" font-size="11" text-anchor="middle" style="fill:var(--soft)">${b.n}</text>`:''}`;});
+  bins.forEach((b,i)=>{if(i%2===0)s+=`<text x="${Lp+i*bw}" y="${H-Bt+14}" font-size="10" text-anchor="middle" style="fill:var(--soft)">${b.a>0?'+':''}${b.a}%</text>`;});
+  s+=`<line x1="${X(0)}" x2="${X(0)}" y1="${T-6}" y2="${H-Bt}" style="stroke:var(--leash);stroke-width:2;stroke-dasharray:4 3"/>`;
+  s+=`<line x1="${X(L.d)}" x2="${X(L.d)}" y1="${T-6}" y2="${H-Bt}" style="stroke:var(--ink);stroke-width:2.5"/><text x="${Math.min(W-30,Math.max(30,X(L.d)))}" y="${T-8}" font-size="12" font-weight="700" text-anchor="middle" style="fill:var(--ink)">🐕 現在 ${pct0(L.d)}</text>`;
+  s+=`<text x="${X(0)}" y="${H-4}" font-size="11" text-anchor="middle" style="fill:var(--leash)">主人</text></svg>`;host.innerHTML=s;
+  const near=R.filter(r=>Math.abs(r.d)<10).length;
+  $('lHistNote').textContent=`柱子高度是月數。五年裡有 ${near} 個月狗在主人 ±10% 內。現在的位置比 ${Math.round(R.filter(r=>r.d<L.d).length/R.length*100)}% 的月份都更靠前。`;
+}
+function drawBasis(R,T){
+  const host=$('lEps'),P=R.filter((r,i)=>/-(03|06|09|12)$/.test(r.m)||i===R.length-1),W=Math.max(300,Math.round(host.clientWidth)||600),H=200,Lp=4,Rp=4,T0=22,Bt=24,n=P.length,cw=(W-Lp-Rp)/n;
+  const mx=Math.max(...P.map(r=>r.e))*1.12,Y=v=>T0+(1-v/mx)*(H-T0-Bt);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${T.b}走勢">`;
+  P.forEach((r,i)=>{const prev=P[i-4],up=!prev||r.e>=prev.e;
+    s+=`<rect x="${Lp+i*cw+cw*.15}" y="${Y(r.e)}" width="${cw*.7}" height="${H-Bt-Y(r.e)}" rx="2" style="fill:var(--${up?'hold':'warn'})"/>`;
+    if(i===n-1||i%4===3)s+=`<text x="${Lp+i*cw+cw/2}" y="${Y(r.e)-5}" font-size="11" text-anchor="middle" style="fill:var(--ink)" font-weight="700">${r.e.toFixed(1)}</text>`;
+    if(r.m.endsWith('-03'))s+=`<text x="${Lp+i*cw+cw/2}" y="${H-6}" font-size="11" text-anchor="middle" style="fill:var(--soft)">${r.m.slice(0,4)}</text>`;});
+  s+='</svg>';host.innerHTML=s+`<div class="legend"><span><i style="background:var(--hold);height:10px"></i>比一年前高</span><span><i style="background:var(--warn);height:10px"></i>比一年前低</span></div>`;
+}
+// long settings
+function fillUpd(){const rows=STOCKS[ALL.cur].rows,last=rows[rows.length-1][0];let[y,m]=last.split('-').map(Number);const out=[];for(let i=0;i<7;i++){out.push(`${y}-${String(m).padStart(2,'0')}`);m++;if(m>12){m=1;y++;}}
+  $('uSel').innerHTML=out.map(k=>`<option value="${k}">${k.replace('-','/')}</option>`).join('');$('uVal').value='';$('uMsg').textContent=(S.lt.upd||[]).length?'已更新：'+S.lt.upd.map(u=>`${u.m.replace('-','/')} 起 ${u.v}`).join('、'):'';}
+$('lPeMode').value=S.lt.peMode;$('lPe').value=S.lt.pe;$('lFwd').value=S.lt.fwd;$('lPeWrap').hidden=S.lt.peMode!=='custom';
+$('lPeMode').onchange=e=>{S.lt.peMode=e.target.value;$('lPeWrap').hidden=S.lt.peMode!=='custom';persist();renderLong();};
+$('lPe').oninput=e=>{S.lt.pe=+e.target.value;persist();renderLong();};
+$('lFwd').oninput=e=>{S.lt.fwd=e.target.value===''?'':+e.target.value;persist();renderLong();};
+$('uAdd').onclick=()=>{const v=+$('uVal').value;if(!(v>0)){$('uMsg').textContent='請填數字。';return;}const m=$('uSel').value;S.lt.upd=(S.lt.upd||[]).filter(u=>u.m!==m);S.lt.upd.push({m,v});persist();fillUpd();renderLong();};
+document.querySelectorAll('#spanSeg button').forEach(x=>x.onclick=()=>{S.lt.span=+x.dataset.p;persist();renderLong();});
+document.querySelectorAll('#scaleSeg button').forEach(x=>x.onclick=()=>{S.lt.scale=x.dataset.s;persist();renderLong();});
+// tabs
+function showTab(t){const long=t==='long';$('tab-daily').hidden=long;$('tab-long').hidden=!long;$('tb-daily').setAttribute('aria-selected',String(!long));$('tb-long').setAttribute('aria-selected',String(long));ALL.tab=t;persist();long?renderLong():render();}
+$('tb-daily').onclick=()=>showTab('daily');$('tb-long').onclick=()=>showTab('long');
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{ALL.tab==='long'?renderLong():render()},150)});
+function renderPicker(){
+  const cur=ALL.cur;$('picker').innerHTML=Object.keys(STOCKS).map(c=>withStock(c,()=>{const B=S.bars,Ms=masters(),P=B[B.length-1].c,dd=(P/Ms[Ms.length-1]-1)*100,X=computeLong(),ld=X?X.L.d:null,prev=B[B.length-2],ch=prev?(P/prev.c-1)*100:0;
+    const tag=(v,lim)=>v===null?'—':`<b class="${Math.abs(v)<lim?'hold':v>0?'up':'down'}">${v>0?'+':''}${Math.round(v)}%</b>`;
+    return `<button class="pk" data-c="${c}" aria-pressed="${c===cur}"><span class="nm"><b>${STOCKS[c].name}</b><small>${c}・${+S.lots>0?S.lots+' 張':'觀察'}</small></span><span class="px">${fmt(P)} <small class="${cls(ch)}" style="font-size:.8rem">${ch>=0?'▲':'▼'}${Math.abs(ch).toFixed(1)}%</small></span><span class="dv"><span>每日 ${tag(dd,+S.near)}</span><span>長期 ${tag(ld,10)}</span></span></button>`;})).join('');
+  $('picker').querySelectorAll('.pk').forEach(b=>b.onclick=()=>switchStock(b.dataset.c));
+  $('title').textContent=`${STOCKS[ALL.cur].name} ${ALL.cur}・主人與狗`;document.title=`${STOCKS[ALL.cur].name}・主人與狗`;}
+function syncForm(){F.forEach(k=>{$(k).value=S[k];});syncMode();$('lPeMode').value=S.lt.peMode;$('lPe').value=S.lt.pe;$('lFwd').value=S.lt.fwd;$('lPeWrap').hidden=S.lt.peMode!=='custom';fillUpd();$('sc').value=0;$('tip').textContent='點 K 棒可看當日明細';$('lTip').textContent='點圖上任一個月可看明細';$('saveMsg').textContent='';}
+function switchStock(c){if(!STOCKS[c])return;ALL.cur=c;S=ALL.st[c];syncForm();persist();showTab(ALL.tab);}
+syncForm();showTab(ALL.tab==='long'?'long':'daily');
+$('eps').addEventListener('input',()=>{if($('eps').value===''){S.epsAuto=true;const r=STOCKS[ALL.cur].rows;S.eps=r[r.length-1][2];$('eps').value=S.eps;persist();render();}else S.epsAuto=false;persist();});
+(async()=>{try{const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const D=await r.json();
+  Object.keys(STOCKS).forEach(c=>{const d=D.stocks&&D.stocks[c];if(!d)return;
+    if(d.rows&&d.rows.length)STOCKS[c].rows=d.rows;
+    const x=ALL.st[c],map=new Map(x.bars.map(b=>[b.d,b]));(d.bars||[]).forEach(([dd,o,h,l,cl])=>map.set(dd,{d:dd,o,h,l,c:cl}));
+    x.bars=[...map.values()].sort((a,z)=>a.d<z.d?-1:1);
+    if(x.epsAuto!==false&&d.fund&&d.fund.eps>0)x.eps=d.fund.eps;});
+  persist();syncForm();showTab(ALL.tab==='long'?'long':'daily');}catch(e){}})();
+
+</script>
+</body>
+</html>
