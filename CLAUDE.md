@@ -19,7 +19,7 @@ otc/                           # 上櫃股票資料（GitHub Actions 每天寫�
 index.html                     # 整個前端（單檔：HTML + CSS + JS，無 build 步驟）
 data.json                      # 自動更新的資料（GitHub Actions 每天寫入）
 scripts/update.py              # 抓資料腳本，只用 Python 內建模組
-.github/workflows/update.yml   # 排程：平日台灣時間 15:30、19:00，另可手動執行
+.github/workflows/update.yml   # 排程：平日台灣時間 7 次（14:47～21:23，隔天 07:07 補跑），另可手動執行
 ```
 
 `update.py` 用 `dirname(dirname(__file__))` 找 repo 根目錄，所以**必須留在 `scripts/` 底下**。
@@ -115,6 +115,11 @@ scripts/update.py              # 抓資料腳本，只用 Python 內建模組
 ## 已知問題 / 待辦
 
 - 只在模擬資料下測過，目前真實執行正常（第一次跑抓到 61 天）。
+- GitHub 排程**不準時**：2026-09-28 的 15:30 那次拖到 23:40，9/29 的到 21:00 都還沒跑。對策：
+  - 排程改成平日 7 次、避開整點。
+  - 網頁備援 `refreshDefaults`：預設四檔在平日 14:00 後如果 data.json 還沒有今天的資料，網頁直接向證交所補 K 線（每檔 30 分鐘最多一次，記在 `ALL.defChk`）。上櫃自選股票沒有這層備援，只能靠排程。
+- 櫃買中心 API 偶爾逾時，當天沒抓到就等下一次排程重試（`done` 只記錄成功或確定休市的日子）。
+- 9/25、9/28（教師節）休市。
 - Actions 已升級到 `checkout@v5`、`setup-python@v6`（Node 24），並固定 `ubuntu-24.04`。
 - 使用者回饋（2026-09-27 LINE 群組）：最多人要「自己換股票」，已做成自選股票。另有人問「有沒有 app」（可做加到主畫面，Fred 說先不用）、台指期／選擇權（沒有 EPS，不適用）、自動下單（不做）。
 - 資料只存在各自手機的 localStorage，不同裝置之間不同步，也沒有匯出／匯入功能。可以考慮加一個「備份碼」功能。

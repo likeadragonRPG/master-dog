@@ -762,16 +762,26 @@ async function addStock(){
     switchStock(c);
   }finally{adding=false;renderManage();}
 }
+// 向證交所補上最後一筆之後的 K 線（最多回補 3 個月）
+async function twseBars(c,x){const lastM=x.bars.length?x.bars[x.bars.length-1].d.slice(0,7):'';let got=[];
+  for(const[y,mm]of monthsBack(3).filter(([y,mm])=>`${y}-${String(mm).padStart(2,'0')}`>=lastM).reverse())got=got.concat((await fetchBars(c,y,mm)).bars);
+  if(!got.length)return false;mergeBars(x,got);return true;}
+// 預設四檔的備援：GitHub 排程常延遲，所以 14:00 後 data.json 還沒有今天的資料，就由網頁直接向證交所補（半小時最多一次）
+function needToday(x){const t=new Date(Date.now()+8*3600e3),wd=t.getUTCDay(),today=t.toISOString().slice(0,10),last=x.bars.length?x.bars[x.bars.length-1].d:'';
+  if(last>=today)return false;if(wd>=1&&wd<=5&&t.getUTCHours()>=14)return true;
+  const p=new Date(t);do{p.setUTCDate(p.getUTCDate()-1)}while(p.getUTCDay()===0||p.getUTCDay()===6);return last<p.toISOString().slice(0,10);}
+async function refreshDefaults(){if(!ALL.defChk)ALL.defChk={};let any=false;
+  for(const c of ALL.list){const x=ALL.st[c];if(ALL.custom[c]||!needToday(x)||Date.now()-(ALL.defChk[c]||0)<30*60e3)continue;
+    ALL.defChk[c]=Date.now();const n=x.bars.length,last=n?x.bars[n-1].d:'';if(await twseBars(c,x)&&x.bars[x.bars.length-1].d>last)any=true;persist();}
+  return any;}
 // 每次打開網頁，補上自選股票的新交易日（半小時內抓過就不再抓）
 async function refreshCustom(c){const m=ALL.custom[c],x=ALL.st[c];if(!m||!x||Date.now()-(m.fetched||0)<30*60e3)return false;
   if(m.mkt==='otc'){const o=await fetchOtc(c);if(!o.bars.length)return false;mergeBars(x,o.bars);
     const eps=epsFrom(x.bars,o.pes);if(eps>0&&x.epsAuto!==false)x.eps=eps;setMeta(c,x,eps);persist();return true;}
-  const lastM=x.bars.length?x.bars[x.bars.length-1].d.slice(0,7):'';let got=[];
-  for(const[y,mm]of monthsBack(3).filter(([y,mm])=>`${y}-${String(mm).padStart(2,'0')}`>=lastM).reverse())got=got.concat((await fetchBars(c,y,mm)).bars);
-  if(!got.length)return false;mergeBars(x,got);
+  if(!await twseBars(c,x))return false;
   const[y0,m0]=monthsBack(1)[0];let p=await fetchPE(c,y0,m0);if(!p.length){const[y1,m1]=monthsBack(2)[1];p=await fetchPE(c,y1,m1);}
   const eps=epsFrom(x.bars,p);if(eps>0&&x.epsAuto!==false)x.eps=eps;setMeta(c,x,eps);persist();return true;}
-async function refreshAll(){let any=false;for(const c of ALL.list)if(ALL.custom[c])any=(await refreshCustom(c))||any;
+async function refreshAll(){let any=await refreshDefaults();for(const c of ALL.list)if(ALL.custom[c])any=(await refreshCustom(c))||any;
   if(any){S=ALL.st[ALL.cur];syncForm();showTab(ALL.tab);}}
 function removeStock(c){if(ALL.list.length<=1)return;const nm=STOCKS[c].name;
   if(ALL.custom[c]){if(!confirm(`確定移除 ${nm}？這檔的設定和紀錄會一起刪掉。`))return;delete ALL.custom[c];delete ALL.st[c];delete STOCKS[c];}
