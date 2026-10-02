@@ -1,10 +1,12 @@
 """每天收盤後由 GitHub Actions 執行：抓上市股票每日股價與最新本益比，更新 data.json。
 只用 Python 內建模組，不需要安裝任何套件。"""
 import json, os, time, urllib.request, datetime as dt
+from copy import deepcopy
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data.json")
-CODES = ["2330", "2454", "3037", "2408", "3189", "8046", "2327"]
+CORE_CODES = ["2330", "2454", "3037", "2408"]
+CODES = CORE_CODES + ["3189", "8046", "2327"]
 STOCK_NAMES = {"3189": "景碩", "8046": "南電", "2327": "國巨"}
 UA = {"User-Agent": "Mozilla/5.0 (master-dog updater)", "Accept": "application/json"}
 TW = dt.timezone(dt.timedelta(hours=8))
@@ -130,13 +132,18 @@ def update_twse(data, today):
         validate_bars(code, s["bars"])
         print(code, "bars:", len(s["bars"]), "last:", s["bars"][-1])
 
-    # 上市股票日期不應分歧。偵測單一 API 回舊資料或漏抓。
+    # 原本四檔核心股日期不應分歧；新增觀察股可能停牌或當日無成交，不能拖垮全組更新。
     latest = {c: data["stocks"][c]["bars"][-1][0] for c in CODES}
-    if len(set(latest.values())) != 1:
-        raise RuntimeError(f"上市股票最後交易日不一致，取消發布：{latest}")
+    core_latest = {c: latest[c] for c in CORE_CODES}
+    if len(set(core_latest.values())) != 1:
+        raise RuntimeError(f"核心四檔最後交易日不一致，取消發布：{core_latest}")
     market_day = twse_is_trading_day(today)
-    if market_day is True and any(day != today.isoformat() for day in latest.values()):
-        raise RuntimeError(f"證交所確認今天有交易，但個股資料仍停在舊日期：{latest}；取消發布並等待下次重試。")
+    if market_day is True and any(day != today.isoformat() for day in core_latest.values()):
+        raise RuntimeError(f"證交所確認今天有交易，但核心四檔仍停在舊日期：{core_latest}；取消發布並等待下次重試。")
+    for code in CODES[len(CORE_CODES):]:
+        day = latest[code]
+        if (today - dt.date.fromisoformat(day)).days > 7:
+            print(f"::warning::{code} 最近成交日為 {day}；可能停牌或多日無成交，仍保留行情並繼續其他股票更新。")
 
     # 本益比 / 股價淨值比 → 反推 EPS / BPS。缺資料時保留舊值，但標示為警告。
     pe_data = get_json("https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL")
@@ -212,8 +219,11 @@ def main():
     errors = []
 
     try:
-        update_twse(data, today)
+        candidate = deepcopy(data)
+        update_twse(candidate, today)
+        data = candidate
     except Exception as e:
+        # 上市組驗證失敗時丟棄整個候選，後續櫃買成功也不能意外寫出半套上市資料。
         errors.append(f"TWSE 更新失敗：{e}")
         print(f"::error::{errors[-1]}")
 
@@ -418,16 +428,20 @@ def update_otc(today):
         complete = True
         for (y, m) in months_back(today, 24)[::3]:
             d = dt.date(y, m, 15)
+            # 本季第一個月尚未到 15 號時，以今天為上限往前找最近可用交易日。
+            search_back = d > today
+            if search_back:
+                d = today
             sample_ok = False
-            for _ in range(10):  # 假日、尚未公告或暫時逾時時往後找交易日
+            for _ in range(10):  # 假日、尚未公告或暫時逾時時找附近可用交易日
                 if d.weekday() < 5:
                     pes = tpex_pe(d)
                     if pes is None:
-                        d += dt.timedelta(days=1)
+                        d += dt.timedelta(days=-1 if search_back else 1)
                         continue
                     sample_ok = True
                     break
-                d += dt.timedelta(days=1)
+                d += dt.timedelta(days=-1 if search_back else 1)
             if not sample_ok:
                 complete = False
                 pending.append(f"PE 歷史樣本 {y}-{m:02d} 未抓齊")

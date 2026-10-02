@@ -1,12 +1,6 @@
 name: 更新股價資料
 
 on:
-  # 更新抓取程式後立即補建新股票資料；資料檔本身不符合此路徑，不會觸發循環執行。
-  push:
-    branches: [main]
-    paths:
-      - scripts/update.py
-      - .github/workflows/update.yml
   # GitHub 排程常延遲好幾小時、偶爾整次跳過，所以多排幾次，並避開整點（整點最擠）。
   # 時間是 UTC，台灣時間 = +8：14:47、15:43、16:37、18:13、19:37、21:23，隔天 07:07 再補一次
   schedule:
