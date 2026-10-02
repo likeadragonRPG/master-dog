@@ -122,14 +122,14 @@ details[open]>summary{margin-bottom:12px}
   </div>
   <p class="note" id="addMsg" aria-live="polite"></p>
   <div id="manage" style="margin-top:10px"></div>
-  <p class="note">加入後會抓近 3 個月的股價和本益比：上櫃股票幾秒鐘就好；上市股票要直接向證交所抓，大約 20 秒。之後每次打開網頁都會自動補上新的交易日（上櫃股票在每天 15:30、19:00 更新）。自己加的股票目前只有「每日操作」。選好的股票只存在這支手機裡。</p>
+  <p class="note">加入後會抓近 3 個月股價和近兩年本益比；也可以到「五年長期」補齊上市股票的五年資料。之後每次打開網頁都會自動補上新的交易日（上櫃股票在每天 15:30、19:00 更新）。選好的股票只存在這支手機裡。</p>
   <div class="row"><button class="ghost" id="addClose">收起來</button></div>
 </section>
 <div class="tabs" role="tablist">
   <button role="tab" id="tb-daily" aria-selected="true">每日操作</button>
   <button role="tab" id="tb-long" aria-selected="false">五年長期</button>
 </div>
-<p class="note" id="longHint" style="margin:-8px 0 14px" hidden>這檔是自己加入的股票，目前只有「每日操作」。「五年長期」需要五年的歷史資料，還沒有提供，所以按不了。</p>
+<p class="note" id="longHint" style="margin:-8px 0 14px" hidden></p>
 
 <div class="layout" id="tab-daily">
   <section class="card banner span2" id="banner" aria-live="polite">
@@ -261,6 +261,12 @@ details[open]>summary{margin-bottom:12px}
 </div>
 
 <div class="layout" id="tab-long" hidden>
+  <section class="card span2" id="longEmpty" hidden>
+    <h2>補齊五年資料</h2>
+    <p class="note" id="longEmptyMsg">這檔股票目前還沒有足夠的五年歷史資料。</p>
+    <button id="longFetch">補齊五年資料</button>
+  </section>
+  <div id="longCharts" style="display:contents">
   <section class="card banner span2" id="lBanner">
     <div class="asof">五年長期：狗離主人多遠</div>
     <div class="act" id="lAct"></div>
@@ -325,6 +331,7 @@ details[open]>summary{margin-bottom:12px}
       <p class="note" id="srcNote"></p>
     </details>
   </section>
+  </div>
 </div>
 </main>
 
@@ -350,7 +357,7 @@ try{const r=localStorage.getItem(KEY);if(r)ALL=Object.assign(ALL,JSON.parse(r));
 // 自選股票：ALL.custom 存名稱與最新數字，ALL.list 是卡片順序（含預設四檔中沒被移除的）
 const DEF=Object.keys(STOCKS).filter(c=>!FEATURED[c]);
 if(!ALL.custom)ALL.custom={};
-function addMeta(c,m){const x=ALL.st[c];STOCKS[c]={name:m.name,method:'pe',near:10,far:20,lots:0,core:0,custom:true,rows:[[m.ym,m.close,m.eps]],
+function addMeta(c,m){const x=ALL.st[c],seed=STOCKS[c],rows=Array.isArray(m.rows)&&m.rows.length?m.rows:(seed&&seed.rows&&seed.rows.length>3?seed.rows:[[m.ym,m.close,m.eps]]);STOCKS[c]={name:m.name,method:'pe',near:10,far:20,lots:0,core:0,custom:true,rows,
   bars:(x&&x.bars||[]).map(b=>[b.d,b.o,b.h,b.l,b.c])};DPE[c]=m.pe;}
 Object.keys(ALL.custom).forEach(c=>addMeta(c,ALL.custom[c]));
 if(!Array.isArray(ALL.list))ALL.list=[...DEF];
@@ -578,13 +585,25 @@ function basisAt(m,k){let v=null;for(const r of STOCKS[ALL.cur].rows){if(r[0]<=m
 function monthly(){const meta=STOCKS[ALL.cur],k=meta.method==='pb'?3:2,M={};meta.rows.forEach(r=>M[r[0]]=r[1]);S.bars.forEach(b=>{M[b.d.slice(0,7)]=b.c;});
   const ks=Object.keys(M).sort(),last=ks[ks.length-1],[ly,lm]=last.split('-').map(Number),start=`${ly-5}-${String(lm).padStart(2,'0')}`;
   return ks.filter(x=>x>start).map(m=>{const e=basisAt(m,k);return{m,c:M[m],e,pe:e>0?M[m]/e:null};}).filter(r=>r.e>0);}
-function computeLong(){if(STOCKS[ALL.cur].custom)return null;const pb=STOCKS[ALL.cur].method==='pb',R=monthly();if(!R.length)return null;
+function computeLong(){const pb=STOCKS[ALL.cur].method==='pb',R=monthly();if(!R.length)return null;
   const medPE=median(R.map(r=>r.pe)),PE=S.lt.peMode==='custom'&&+S.lt.pe>0?+S.lt.pe:medPE;
   R.forEach(r=>{r.M=r.e*PE;r.d=(r.c/r.M-1)*100;});return{R,PE,medPE,pb,L:R[R.length-1]};}
 function pct0(n){return (n>0?'+':'')+Math.round(n)+'%';}
 
 function renderLong(){
-  const X=computeLong();if(!X)return;const{R,PE,medPE,pb,L}=X;
+  const X=computeLong(),custom=!!ALL.custom[ALL.cur],history=custom&&ALL.custom[ALL.cur].history;
+  const ready=custom?!!(history&&history.done&&history.done.length>=60&&X&&X.R.length>=12):!!(X&&X.R.length>=48);
+  $('longCharts').hidden=!ready;$('longEmpty').hidden=ready;
+  if(custom&&!ready){
+    const otc=ALL.custom[ALL.cur].mkt==='otc';
+    $('longEmptyMsg').textContent=otc?'櫃買中心的歷史資料不能由這個網頁直接讀取，目前沒有這檔股票的五年資料。':history?.done?.length>=60?'五年股價資料已補齊，但可用的獲利與本益比月份不足，暫時無法繪製長期圖。':'目前有 '+((X&&X.R.length)||0)+' 個月的有效獲利資料；補齊約需 2～3 分鐘，期間請保持網頁開啟。資料會分段保存，若中斷可以再按一次繼續。';
+    $('longFetch').disabled=otc||!!history?.loading||!!(history?.done?.length>=60);
+    $('longFetch').hidden=otc||!!(history?.done?.length>=60);
+    $('longFetch').textContent=history?.loading?'正在補資料…':history?.error?'繼續補齊五年資料':'補齊五年資料';
+    $('longFetch').hidden=otc;
+    if(ALL.custom[ALL.cur].longProgress)$('longEmptyMsg').textContent=ALL.custom[ALL.cur].longProgress;
+  }
+  if(!X||!ready)return;const{R,PE,medPE,pb,L}=X;
   const T=pb?{m:'本淨比',b:'每股淨值',s:'淨值',f:'未來一年每股淨值'}:{m:'本益比',b:'近四季 EPS',s:'EPS',f:'未來一年 EPS'};CUR_T=T;const dp=pb?2:1;
   BANDS=[0.5,0.75,1,1.3,1.6,2].map(x=>pb?Math.round(x*medPE*10)/10:Math.round(x*medPE));
   const devs=R.map(r=>r.d),maxI=devs.indexOf(Math.max(...devs)),minI=devs.indexOf(Math.min(...devs));
@@ -707,7 +726,7 @@ $('uAdd').onclick=()=>{const v=+$('uVal').value;if(!(v>0)){$('uMsg').textContent
 document.querySelectorAll('#spanSeg button').forEach(x=>x.onclick=()=>{S.lt.span=+x.dataset.p;persist();renderLong();});
 document.querySelectorAll('#scaleSeg button').forEach(x=>x.onclick=()=>{S.lt.scale=x.dataset.s;persist();renderLong();});
 // tabs
-function showTab(t){const cu=!!STOCKS[ALL.cur].custom,long=t==='long'&&!cu;$('tb-long').disabled=cu;$('longHint').hidden=!cu;$('tab-daily').hidden=long;$('tab-long').hidden=!long;$('tb-daily').setAttribute('aria-selected',String(!long));$('tb-long').setAttribute('aria-selected',String(long));ALL.tab=t;persist();long?renderLong():render();}
+function showTab(t){const long=t==='long';$('tb-long').disabled=false;$('longHint').hidden=true;$('tab-daily').hidden=long;$('tab-long').hidden=!long;$('tb-daily').setAttribute('aria-selected',String(!long));$('tb-long').setAttribute('aria-selected',String(long));ALL.tab=t;persist();long?renderLong():render();}
 $('tb-daily').onclick=()=>showTab('daily');$('tb-long').onclick=()=>showTab('long');
 let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{ALL.tab==='long'?renderLong():render()},150)});
 function renderPicker(){
@@ -735,8 +754,9 @@ async function fetchBars(c,y,m){const j=await twse(`STOCK_DAY?date=${ymd(y,m)}&s
   const f=j.fields||[],ix=['日期','開盤價','最高價','最低價','收盤價'].map(n=>f.indexOf(n)),[iD,iO,iH,iL,iC]=ix.includes(-1)?[0,3,4,5,6]:ix;
   const w=(j.title||'').trim().split(/\s+/),name=w[w.indexOf(c)+1]||null;
   return{name,bars:j.data.map(r=>{const cl=numv(r[iC]);return cl?{d:rocIso(r[iD]),o:numv(r[iO])||cl,h:numv(r[iH])||cl,l:numv(r[iL])||cl,c:cl}:null}).filter(b=>b&&b.d)};}
-async function fetchPE(c,y,m){const j=await twse(`BWIBBU?date=${ymd(y,m)}&stockNo=${c}`);if(!j||j.stat!=='OK'||!j.data)return[];
+async function fetchPEHistory(c,y,m){const j=await twse(`BWIBBU?date=${ymd(y,m)}&stockNo=${c}`);if(!j||j.stat!=='OK'||!Array.isArray(j.data))return null;
   const f=j.fields||[],iD=f.indexOf('日期'),iP=f.indexOf('本益比');return j.data.map(r=>({d:rocIso(r[iD]),pe:numv(r[iP])})).filter(x=>x.d&&x.pe>0);}
+async function fetchPE(c,y,m){return(await fetchPEHistory(c,y,m))||[];}
 // 上櫃：櫃買中心不允許網頁直接讀，改讀 GitHub 每天代抓的 otc/年-月.json（見 scripts/update.py）
 const otcCache={},hourTag=()=>Math.floor(Date.now()/36e5);
 function otcFile(f){if(!(f in otcCache))otcCache[f]=fetch(`otc/${f}?t=${hourTag()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null).then(j=>{if(!j)delete otcCache[f];return j;});return otcCache[f];}
@@ -749,7 +769,31 @@ function mergeBars(x,bars){const map=new Map(x.bars.map(b=>[b.d,b]));bars.forEac
 // 近四季 EPS = 同一天的收盤 ÷ 本益比（用最新一天兩者都有的資料）
 function epsFrom(bars,pes){const cl=new Map(bars.map(b=>[b.d,b.c]));for(let i=pes.length-1;i>=0;i--){const c=cl.get(pes[i].d);if(c)return Math.round(c/pes[i].pe*100)/100;}return null;}
 function setMeta(c,x,eps){const m=ALL.custom[c],b=x.bars[x.bars.length-1];Object.assign(m,{ym:b.d.slice(0,7),close:b.c,eps:eps>0?eps:m.eps,fetched:Date.now()});
-  STOCKS[c].rows=[[m.ym,m.close,m.eps]];STOCKS[c].bars=x.bars.map(b=>[b.d,b.o,b.h,b.l,b.c]);}
+  const rows=Array.isArray(m.rows)?m.rows:[],i=rows.findIndex(r=>r[0]===m.ym),row=[m.ym,m.close,m.eps];if(i>=0)rows[i]=row;else rows.push(row);rows.sort((a,z)=>a[0]<z[0]?-1:1);m.rows=rows.slice(-72);STOCKS[c].rows=m.rows;STOCKS[c].bars=x.bars.map(b=>[b.d,b.o,b.h,b.l,b.c]);}
+let longFetching=false;
+async function fetchLongHistory(){const c=ALL.cur,m=ALL.custom[c];if(!m||m.mkt==='otc'||longFetching)return;longFetching=true;if(!m.history)m.history={done:[]};m.history.loading=true;m.history.error=false;
+  try{
+    const months=monthsBack(60).reverse(),done=new Set(m.history.done||[]),x=ALL.st[c];let lastEps=0;
+    const peMonths=new Set(months.filter(([y,mm],i)=>mm%3===0||i===months.length-1).map(([y,mm])=>`${y}-${String(mm).padStart(2,'0')}`));
+    let finished=0;
+    for(const[y,mm]of months){const ym=`${y}-${String(mm).padStart(2,'0')}`,prior=(m.rows||[]).filter(a=>a[0]<ym).sort((a,z)=>a[0]<z[0]?-1:1).pop();lastEps=prior&&prior[2]>0?prior[2]:0;if(done.has(ym)){finished++;continue;}
+      m.longProgress=`正在補齊 ${STOCKS[c].name} 五年資料… ${finished+1}/60 個月份`;if(c===ALL.cur)renderLong();
+      const r=await fetchBars(c,y,mm);if(r.err)throw new Error('連不上證交所，已保存已完成的月份，請稍後再繼續。');
+      mergeBars(x,r.bars);const monthBars=x.bars.filter(b=>b.d.slice(0,7)===ym).sort((a,z)=>a.d<z.d?-1:1),close=monthBars.length?monthBars[monthBars.length-1].c:null;
+      if(!close){done.add(ym);m.history.done=[...done];finished++;persist();continue;}
+      if(peMonths.has(ym)){
+        const ps=await fetchPEHistory(c,y,mm);if(ps===null)throw new Error('本益比歷史資料讀取失敗，已保存已完成的月份，請稍後再繼續。');const p=ps.length?ps[ps.length-1]:null;
+        if(p){const matching=monthBars.find(b=>b.d===p.d);lastEps=matching?Math.round(matching.c/p.pe*100)/100:0;}else lastEps=0;
+      }
+      const row=[ym,close,lastEps];m.rows=(m.rows||[]).filter(a=>a[0]!==ym);m.rows.push(row);m.rows.sort((a,z)=>a[0]<z[0]?-1:1);
+      done.add(ym);m.history.done=[...done];m.ym=ym;m.close=close;if(lastEps>0)m.eps=lastEps;
+      x.bars=x.bars.slice(-400);STOCKS[c].rows=m.rows;STOCKS[c].bars=x.bars.map(b=>[b.d,b.o,b.h,b.l,b.c]);m.history.done.sort();finished++;persist();if(c===ALL.cur)renderLong();
+    }
+    m.longProgress='五年股價資料已補齊；圖表只計入有獲利資料的月份。';delete m.history.error;
+  }catch(e){m.history.error=true;m.longProgress=e.message||'資料讀取中斷，已保存完成的部分，請稍後再繼續。';}
+  finally{m.history.loading=false;longFetching=false;persist();if(c===ALL.cur)renderLong();}
+}
+$('longFetch').onclick=fetchLongHistory;
 function addMsg(t){$('addMsg').textContent=t;}
 let adding=false;
 async function addStock(){
