@@ -27,13 +27,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        id: checkout
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: 抓資料
+      - name: 抓資料並驗證
         run: python scripts/update.py
-      - name: 存檔
+      # 即使其中一個資料來源失敗，也提交其他成功來源的完整資料；
+      # 更新步驟仍會讓整個 workflow 顯示失敗，保留可見告警與重試訊號。
+      - name: 保存已完成的資料
+        if: always() && steps.checkout.outcome == 'success'
         run: |
+          rm -f data.json.tmp otc/*.json.tmp
           git config user.name "stock-bot"
           git config user.email "stock-bot@users.noreply.github.com"
           git add data.json

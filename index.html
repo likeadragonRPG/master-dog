@@ -26,6 +26,7 @@ header{display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap
 h1{font:900 1.8rem/1.2 "Noto Serif TC","PMingLiU",serif;margin:0;letter-spacing:.02em}
 h2{font:600 1.15rem/1.3 "Noto Serif TC",serif;margin:0 0 10px}
 .asof{color:var(--soft);font-size:.9rem}
+.asof[data-state="stale"],.asof[data-state="error"]{color:var(--warn);font-weight:700}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
 .layout{display:grid;gap:14px;grid-template-columns:1fr}
 @media (min-width:900px){.layout{grid-template-columns:1.6fr 1fr}.span2{grid-column:1/-1}}
@@ -352,6 +353,9 @@ if(!Array.isArray(ALL.list))ALL.list=[...DEF];
 ALL.list=ALL.list.filter(c=>STOCKS[c]);if(!ALL.list.length)ALL.list=[...DEF];
 Object.keys(STOCKS).forEach(c=>{if(!ALL.st[c])ALL.st[c]=newState(c);const x=ALL.st[c];if(!x.lt)x.lt=newState(c).lt;if(!x.lt.upd)x.lt.upd=[];if(!x.bars||!x.bars.length)x.bars=newState(c).bars;});
 Object.keys(STOCKS).forEach(c=>{const x=ALL.st[c],have=new Set(x.bars.map(b=>b.d));STOCKS[c].bars.forEach(([d,o,h,l,cl])=>{if(!have.has(d))x.bars.push({d,o,h,l,c:cl});});x.bars.sort((a,z)=>a.d<z.d?-1:1);});
+if(!ALL.defStatus)ALL.defStatus={};if(!ALL.customStatus)ALL.customStatus={};
+Object.keys(ALL.defStatus).forEach(c=>{if(ALL.defStatus[c]==='loading')ALL.defStatus[c]='error';});
+Object.keys(ALL.customStatus).forEach(c=>{if(ALL.customStatus[c]==='loading')ALL.customStatus[c]='error';});
 // 設定版本：1 = 近四季 EPS × 預設本益比（取代舊的 peDefault26/fwdEps1/dpe1/fwd2330/ttm1 旗標）
 if(!(ALL.ver>=1)){if(!ALL.ttm1)Object.keys(STOCKS).forEach(c=>{const r=STOCKS[c].rows,x=ALL.st[c];x.eps=r[r.length-1][2];x.mode='pe';x.pe=DPE[c];});
   ['peDefault26','fwdEps1','dpe1','fwd2330','ttm1'].forEach(k=>delete ALL[k]);ALL.ver=1;}
@@ -389,7 +393,16 @@ function render(){
   const Ms=masters(),last=B.length-1,b=B[last],P=b.c,M=Ms[last],d=(P/M-1)*100;
   const prev=B[last-1],chg=prev?P-prev.c:0;
   const p=plan(M),A=advise(P,M,p);
-  $('asof').textContent=`資料日期 ${b.d}　主人 ${S.mode==='pe'?`EPS ${S.eps} × ${S.pe} 倍`:`${S.maN} 日均線`}`;
+  const nowTW=new Date(Date.now()+8*3600e3),wd=nowTW.getUTCDay(),afterClose=wd>=1&&wd<=5&&nowTW.getUTCHours()>=14;
+  const today=nowTW.toISOString().slice(0,10),refreshState=ALL.custom[ALL.cur]?(ALL.customStatus&&ALL.customStatus[ALL.cur]):(ALL.defStatus&&ALL.defStatus[ALL.cur]);
+  const knownHoliday=ALL.marketStatus&&ALL.marketStatus.date===today&&ALL.marketStatus.tradingDay===false;
+  const knownOpen=ALL.marketStatus&&ALL.marketStatus.date===today&&ALL.marketStatus.tradingDay===true;
+  const stale=afterClose&&b.d<today&&!knownHoliday;
+  const sourceWarning=ALL.sourceWarnings&&ALL.sourceWarnings.length?ALL.sourceWarnings[0]:'';
+  const freshness=knownHoliday?'・證交所休市':ALL.dataStatus==='error'?'・官方資料讀取失敗，顯示裝置保存資料':refreshState==='loading'?'・正在確認今日資料':refreshState==='error'?'・更新失敗，顯示舊資料':stale?(knownOpen?'・今天有交易，收盤資料尚未同步':'・今日資料尚未確認'):sourceWarning?'・'+sourceWarning:'';
+  $('asof').dataset.state=!knownHoliday&&(ALL.dataStatus==='error'||refreshState==='error'||stale)?'stale':'';
+  $('asof').title=sourceWarning||'';
+  $('asof').textContent=`資料日期 ${b.d}${freshness}　主人 ${S.mode==='pe'?`EPS ${S.eps} × ${S.pe} 倍`:`${S.maN} 日均線`}`;
   $('banner').style.borderLeftColor=`var(--${A.c})`;$('bAct').textContent=A.a;$('bAct').className='act '+A.c;$('bWhy').textContent=A.w;
 
   // stats
@@ -719,7 +732,7 @@ async function fetchPE(c,y,m){const j=await twse(`BWIBBU?date=${ymd(y,m)}&stockN
   const f=j.fields||[],iD=f.indexOf('日期'),iP=f.indexOf('本益比');return j.data.map(r=>({d:rocIso(r[iD]),pe:numv(r[iP])})).filter(x=>x.d&&x.pe>0);}
 // 上櫃：櫃買中心不允許網頁直接讀，改讀 GitHub 每天代抓的 otc/年-月.json（見 scripts/update.py）
 const otcCache={},hourTag=()=>Math.floor(Date.now()/36e5);
-function otcFile(f){if(!(f in otcCache))otcCache[f]=fetch(`otc/${f}?t=${hourTag()}`).then(r=>r.ok?r.json():null).catch(()=>null);return otcCache[f];}
+function otcFile(f){if(!(f in otcCache))otcCache[f]=fetch(`otc/${f}?t=${hourTag()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null).then(j=>{if(!j)delete otcCache[f];return j;});return otcCache[f];}
 const otcHist=()=>otcFile('pe-hist.json');
 async function fetchOtc(c){let name=null;const bars=[],pes=[];
   for(const[y,m]of monthsBack(3).reverse()){const ym=`${y}-${String(m).padStart(2,'0')}`,j=await otcFile(ym+'.json');if(!j||!j.s||!j.s[c])continue;name=j.n[c];
@@ -763,26 +776,38 @@ async function addStock(){
   }finally{adding=false;renderManage();}
 }
 // 向證交所補上最後一筆之後的 K 線（最多回補 3 個月）
-async function twseBars(c,x){const lastM=x.bars.length?x.bars[x.bars.length-1].d.slice(0,7):'';let got=[];
-  for(const[y,mm]of monthsBack(3).filter(([y,mm])=>`${y}-${String(mm).padStart(2,'0')}`>=lastM).reverse())got=got.concat((await fetchBars(c,y,mm)).bars);
-  if(!got.length)return false;mergeBars(x,got);return true;}
+async function twseBars(c,x){const lastM=x.bars.length?x.bars[x.bars.length-1].d.slice(0,7):'';let got=[],failed=false;
+  for(const[y,mm]of monthsBack(3).filter(([y,mm])=>`${y}-${String(mm).padStart(2,'0')}`>=lastM).reverse()){const r=await fetchBars(c,y,mm);got=got.concat(r.bars);failed=failed||!!r.err;}
+  const before=JSON.stringify(x.bars);if(got.length)mergeBars(x,got);
+  return{changed:JSON.stringify(x.bars)!==before,last:x.bars.length?x.bars[x.bars.length-1].d:'',failed};}
 // 預設四檔的備援：GitHub 排程常延遲，所以 14:00 後 data.json 還沒有今天的資料，就由網頁直接向證交所補（半小時最多一次）
 function needToday(x){const t=new Date(Date.now()+8*3600e3),wd=t.getUTCDay(),today=t.toISOString().slice(0,10),last=x.bars.length?x.bars[x.bars.length-1].d:'';
+  if(ALL.marketStatus&&ALL.marketStatus.date===today&&ALL.marketStatus.tradingDay===false)return false;
   if(last>=today)return false;if(wd>=1&&wd<=5&&t.getUTCHours()>=14)return true;
   const p=new Date(t);do{p.setUTCDate(p.getUTCDate()-1)}while(p.getUTCDay()===0||p.getUTCDay()===6);return last<p.toISOString().slice(0,10);}
-async function refreshDefaults(){if(!ALL.defChk)ALL.defChk={};let any=false;
-  for(const c of ALL.list){const x=ALL.st[c];if(ALL.custom[c]||!needToday(x)||Date.now()-(ALL.defChk[c]||0)<30*60e3)continue;
-    ALL.defChk[c]=Date.now();const n=x.bars.length,last=n?x.bars[n-1].d:'';if(await twseBars(c,x)&&x.bars[x.bars.length-1].d>last)any=true;persist();}
+async function refreshDefaults(){if(!ALL.defChk)ALL.defChk={};if(!ALL.defStatus)ALL.defStatus={};let any=false;
+  for(const c of ALL.list){const x=ALL.st[c];if(ALL.custom[c]||!needToday(x))continue;
+    const retry=ALL.defStatus[c]==='error'?5*60e3:30*60e3;if(Date.now()-(ALL.defChk[c]||0)<retry)continue;
+    ALL.defChk[c]=Date.now();ALL.defStatus[c]='loading';if(c===ALL.cur)render();persist();
+    try{const r=await twseBars(c,x);ALL.defStatus[c]=r.failed?'error':'checked';if(r.changed)any=true;}
+    catch(e){ALL.defStatus[c]='error';}
+    persist();if(c===ALL.cur)render();}
   return any;}
 // 每次打開網頁，補上自選股票的新交易日（半小時內抓過就不再抓）
-async function refreshCustom(c){const m=ALL.custom[c],x=ALL.st[c];if(!m||!x||Date.now()-(m.fetched||0)<30*60e3)return false;
-  if(m.mkt==='otc'){const o=await fetchOtc(c);if(!o.bars.length)return false;mergeBars(x,o.bars);
-    const eps=epsFrom(x.bars,o.pes);if(eps>0&&x.epsAuto!==false)x.eps=eps;setMeta(c,x,eps);persist();return true;}
-  if(!await twseBars(c,x))return false;
-  const[y0,m0]=monthsBack(1)[0];let p=await fetchPE(c,y0,m0);if(!p.length){const[y1,m1]=monthsBack(2)[1];p=await fetchPE(c,y1,m1);}
-  const eps=epsFrom(x.bars,p);if(eps>0&&x.epsAuto!==false)x.eps=eps;setMeta(c,x,eps);persist();return true;}
-async function refreshAll(){let any=await refreshDefaults();for(const c of ALL.list)if(ALL.custom[c])any=(await refreshCustom(c))||any;
-  if(any){S=ALL.st[ALL.cur];syncForm();showTab(ALL.tab);}}
+async function refreshCustom(c){const m=ALL.custom[c],x=ALL.st[c];if(!m||!x)return false;
+  if(!ALL.customChk)ALL.customChk={};if(!ALL.customStatus)ALL.customStatus={};
+  const retry=ALL.customStatus[c]==='error'?5*60e3:30*60e3;if(Date.now()-(ALL.customChk[c]||0)<retry)return false;
+  ALL.customChk[c]=Date.now();ALL.customStatus[c]='loading';persist();if(c===ALL.cur)render();
+  try{
+    if(m.mkt==='otc'){const o=await fetchOtc(c);if(!o.bars.length){ALL.customStatus[c]='error';persist();if(c===ALL.cur)render();return false;}mergeBars(x,o.bars);
+      const eps=epsFrom(x.bars,o.pes);if(eps>0&&x.epsAuto!==false)x.eps=eps;setMeta(c,x,eps);ALL.customStatus[c]='checked';persist();return true;}
+    const sync=await twseBars(c,x);if(sync.failed){ALL.customStatus[c]='error';persist();if(c===ALL.cur)render();return false;}
+    const[y0,m0]=monthsBack(1)[0];let p=await fetchPE(c,y0,m0);if(!p.length){const[y1,m1]=monthsBack(2)[1];p=await fetchPE(c,y1,m1);}
+    const eps=epsFrom(x.bars,p);if(eps>0&&x.epsAuto!==false)x.eps=eps;setMeta(c,x,eps);ALL.customStatus[c]='checked';persist();if(c===ALL.cur)render();return sync.changed;
+  }catch(e){ALL.customStatus[c]='error';persist();if(c===ALL.cur)render();return false;}}
+let refreshing=false;
+async function refreshAll(){if(refreshing)return;refreshing=true;try{let any=await refreshDefaults();for(const c of ALL.list)if(ALL.custom[c])any=(await refreshCustom(c))||any;
+  if(any){S=ALL.st[ALL.cur];syncForm();showTab(ALL.tab);}}finally{refreshing=false;}}
 function removeStock(c){if(ALL.list.length<=1)return;const nm=STOCKS[c].name;
   if(ALL.custom[c]){if(!confirm(`確定移除 ${nm}？這檔的設定和紀錄會一起刪掉。`))return;delete ALL.custom[c];delete ALL.st[c];delete STOCKS[c];}
   ALL.list=ALL.list.filter(x=>x!==c);persist();addMsg(`已移除 ${nm}。`);
@@ -801,15 +826,27 @@ $('addBtn').onclick=addStock;$('addCode').addEventListener('keydown',e=>{if(e.ke
 $('addClose').onclick=()=>{$('addPanel').hidden=true;renderPicker();};
 renderManage();
 
-(async()=>{try{const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw 0;const D=await r.json();
-  Object.keys(STOCKS).forEach(c=>{const d=D.stocks&&D.stocks[c];if(!d)return;
-    if(d.rows&&d.rows.length)STOCKS[c].rows=d.rows;
-    if(d.bars&&d.bars.length)STOCKS[c].bars=d.bars; // 「還原成預設資料」也用最新官方資料
-    const x=ALL.st[c],map=new Map(x.bars.map(b=>[b.d,b]));(d.bars||[]).forEach(([dd,o,h,l,cl])=>map.set(dd,{d:dd,o,h,l,c:cl}));
-    x.bars=[...map.values()].sort((a,z)=>a.d<z.d?-1:1);
-    if(x.epsAuto!==false&&d.fund&&d.fund.eps>0)x.eps=d.fund.eps;});
-  persist();syncForm();showTab(ALL.tab==='long'?'long':'daily');}catch(e){}
-  refreshAll();})();
+let dataLoading=false,dataSignature='';
+async function loadOfficialData(){if(dataLoading)return false;dataLoading=true;let changed=false;
+  try{const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const D=await r.json();
+    if(!D||!D.stocks||!/^\d{4}-\d{2}-\d{2}$/.test(D.updated||''))throw new Error('資料格式不完整');
+    for(const c of DEF)if(!D.stocks[c]||!Array.isArray(D.stocks[c].bars)||!D.stocks[c].bars.length)throw new Error(`缺少 ${c} 的 K 線`);
+    const sig=JSON.stringify([D.updated,D.health,DEF.map(c=>{const d=D.stocks[c],b=d.bars[d.bars.length-1];return[c,b,d.fund];})]);
+    ALL.dataStatus='ok';ALL.sourceWarnings=D.health&&Array.isArray(D.health.warnings)?D.health.warnings:[];ALL.marketStatus=D.health&&D.health.market||null;
+    if(sig!==dataSignature){dataSignature=sig;
+      Object.keys(STOCKS).forEach(c=>{const d=D.stocks&&D.stocks[c];if(!d)return;
+        if(d.rows&&d.rows.length)STOCKS[c].rows=d.rows;
+        if(d.bars&&d.bars.length)STOCKS[c].bars=d.bars;
+        const x=ALL.st[c],map=new Map(x.bars.map(b=>[b.d,b]));(d.bars||[]).forEach(([dd,o,h,l,cl])=>map.set(dd,{d:dd,o,h,l,c:cl}));
+        x.bars=[...map.values()].sort((a,z)=>a.d<z.d?-1:1);
+        if(x.epsAuto!==false&&d.fund&&d.fund.eps>0)x.eps=d.fund.eps;});
+      persist();syncForm();showTab(ALL.tab==='long'?'long':'daily');changed=true;
+    }else render();
+  }catch(e){ALL.dataStatus='error';persist();render();}
+  finally{dataLoading=false;}
+  return changed;}
+(async()=>{await loadOfficialData();await refreshAll();})();
+setInterval(async()=>{await loadOfficialData();await refreshAll();},5*60e3);
 
 </script>
 </body>

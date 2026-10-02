@@ -9,15 +9,16 @@ UA = {"User-Agent": "Mozilla/5.0 (master-dog updater)", "Accept": "application/j
 TW = dt.timezone(dt.timedelta(hours=8))
 
 
-def get_json(url, tries=3):
+def get_json(url, tries=2):
     for i in range(tries):
         try:
             req = urllib.request.Request(url, headers=UA)
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=15) as r:
                 return json.loads(r.read().decode("utf-8"))
         except Exception as e:  # 網路不穩就重試
             print(f"  retry {i+1}: {url} ({e})")
-            time.sleep(5 * (i + 1))
+            if i + 1 < tries:
+                time.sleep(2 * (i + 1))
     return None
 
 
@@ -40,10 +41,12 @@ def month_bars(code, year, month):
         f"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date={ymd}&stockNo={code}&response=json",
         f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date={ymd}&stockNo={code}",
     ]
+    valid_response = False
     for u in urls:
         j = get_json(u)
         time.sleep(4)  # 證交所有流量限制，慢慢來
-        if j and j.get("stat") == "OK" and j.get("data"):
+        if j and j.get("stat") == "OK" and isinstance(j.get("data"), list):
+            valid_response = True
             f = j.get("fields", [])
             idx = {n: f.index(n) for n in ["日期", "開盤價", "最高價", "最低價", "收盤價"] if n in f}
             if len(idx) < 5:
@@ -54,7 +57,8 @@ def month_bars(code, year, month):
                 if c:
                     out.append([roc_to_iso(row[idx["日期"]]), o or c, h or c, l or c, c])
             return out
-    return []
+    # None 表示兩個端點都失敗；空 list 表示端點有回應但當月沒有資料。
+    return [] if valid_response else None
 
 
 def months_back(today, n):
@@ -68,26 +72,81 @@ def months_back(today, n):
     return res
 
 
-def main():
-    with open(DATA, encoding="utf-8") as f:
-        data = json.load(f)
-    today = dt.datetime.now(TW).date()
+def save_json(path, obj):
+    """先完整寫入暫存檔，再原子替換，避免中斷留下截斷 JSON。"""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
-    # 1) 每日股價
+
+def validate_bars(code, bars):
+    if not bars:
+        raise RuntimeError(f"{code} 沒有任何 K 線，取消發布。")
+    dates = [b[0] for b in bars]
+    if dates != sorted(set(dates)):
+        raise RuntimeError(f"{code} K 線日期重複或未排序，取消發布。")
+    for b in bars:
+        if len(b) != 5 or not all(isinstance(v, (int, float)) for v in b[1:]) or b[4] <= 0:
+            raise RuntimeError(f"{code} 出現格式錯誤的 K 線：{b!r}")
+
+
+def twse_is_trading_day(day):
+    """用證交所大盤日報分辨休市與漏抓；None 表示日曆端點本身失敗。"""
+    if day.weekday() >= 5:
+        return False
+    ymd = day.strftime("%Y%m%d")
+    j = get_json(f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={ymd}&type=ALLBUT0999&response=json")
+    if j and j.get("stat") == "OK":
+        return True
+    if j and j.get("stat") == "很抱歉，沒有符合條件的資料!":
+        return False
+    return None
+
+
+def update_twse(data, today):
+    """建立並驗證完整候選資料，全部通過後才原子發布 data.json。"""
     for code in CODES:
         s = data["stocks"][code]
         have = {b[0]: b for b in s["bars"]}
         n_months = 3 if len(have) < 60 else (2 if today.day <= 7 else 1)
-        for (y, m) in months_back(today, n_months):
-            for b in month_bars(code, y, m):
+        for y, m in months_back(today, n_months):
+            got = month_bars(code, y, m)
+            if got is None:
+                raise RuntimeError(f"{code} {y}-{m:02d} 兩個證交所端點都抓取失敗，取消發布。")
+            for b in got:
                 have[b[0]] = b
         s["bars"] = sorted(have.values())[-400:]
+        validate_bars(code, s["bars"])
         print(code, "bars:", len(s["bars"]), "last:", s["bars"][-1])
 
-    # 2) 最新本益比 / 股價淨值比 → 反推近四季 EPS 與每股淨值
-    #    本益比常比股價晚一天公布，所以要用「本益比那一天」的收盤價來反推，日期對不上就不更新
-    pe = get_json("https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL") or []
-    pe = {r.get("Code"): r for r in pe if isinstance(r, dict)}
+    # 四檔正常交易股票日期不應分歧。偵測單一 API 回舊資料或漏抓。
+    latest = {c: data["stocks"][c]["bars"][-1][0] for c in CODES}
+    if len(set(latest.values())) != 1:
+        raise RuntimeError(f"四檔最後交易日不一致，取消發布：{latest}")
+    market_day = twse_is_trading_day(today)
+    if market_day is True and any(day != today.isoformat() for day in latest.values()):
+        raise RuntimeError(f"證交所確認今天有交易，但個股資料仍停在舊日期：{latest}；取消發布並等待下次重試。")
+
+    # 本益比 / 股價淨值比 → 反推 EPS / BPS。缺資料時保留舊值，但標示為警告。
+    pe_data = get_json("https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL")
+    warnings = []
+    if market_day is None:
+        warnings.append("無法確認證交所今天是否開市；股價日期已做跨股票一致性檢查。")
+    if not isinstance(pe_data, list):
+        warnings.append("證交所 BWIBBU_ALL 暫時無法取得；本次保留既有 EPS/BPS。")
+        pe = {}
+    else:
+        pe = {r.get("Code"): r for r in pe_data if isinstance(r, dict)}
     for code in CODES:
         s = data["stocks"][code]
         r = pe.get(code)
@@ -102,9 +161,10 @@ def main():
             if pbr and pbr > 0:
                 fund["bps"] = round(close / pbr, 2)
             fund["date"] = day
+        else:
+            warnings.append(f"{code} 本益比資料日期無法與收盤價配對；保留既有 EPS/BPS。")
         print(code, "fund:", s.get("fund"), "(本益比日期", day, ")")
 
-    # 3) 每月資料（五年長期）：本月用最新收盤與最新 EPS／淨值
     for code in CODES:
         s = data["stocks"][code]
         last = s["bars"][-1]
@@ -121,16 +181,42 @@ def main():
             rows.append(new)
         s["rows"] = rows[-72:]
 
-    data["updated"] = max(data["stocks"][c]["bars"][-1][0] for c in CODES)
-    with open(DATA, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
+    data["updated"] = max(latest.values())
+    data["health"] = {
+        "twse": {"ok": True, "dates": latest},
+        "market": {"date": today.isoformat(), "tradingDay": market_day},
+        "warnings": warnings,
+    }
+    save_json(DATA, data)
     print("updated:", data["updated"])
+    for warning in warnings:
+        print(f"::warning::{warning}")
 
-    # 4) 上櫃股票（給網頁的「自己加入股票」用）。失敗不影響上面四檔的更新
+
+def main():
+    with open(DATA, encoding="utf-8") as f:
+        data = json.load(f)
+    today = dt.datetime.now(TW).date()
+    errors = []
+
     try:
-        update_otc(today)
+        update_twse(data, today)
     except Exception as e:
-        print("otc failed:", e)
+        errors.append(f"TWSE 更新失敗：{e}")
+        print(f"::error::{errors[-1]}")
+
+    # OTC 與 TWSE 分開執行；其中一邊失敗，不會丟掉另一邊已成功的資料。
+    try:
+        pending = update_otc(today)
+        if pending:
+            errors.append("TPEx 尚有未完成日期或本益比歷史，會保留重試資格：" + ", ".join(pending[:12]))
+            print(f"::error::{errors[-1]}")
+    except Exception as e:
+        errors.append(f"TPEx 更新失敗：{e}")
+        print(f"::error::{errors[-1]}")
+
+    if errors:
+        raise RuntimeError("資料來源未全部完成；已保存成功來源的資料，下一次排程會重試。")
 
 
 # ===== 上櫃股票 =====
@@ -149,10 +235,12 @@ def tpex_day(day):
     if not j or j.get("stat") != "ok":
         return None
     quotes = {}
+    found_quote_table = False
     for tb in j.get("tables", []):
         f = [x.strip() for x in tb.get("fields", [])]
         if "代號" not in f or "收盤" not in f:
             continue
+        found_quote_table = True
         i = {k: f.index(k) for k in ["代號", "名稱", "開盤", "最高", "最低", "收盤"]}
         for r in tb.get("data", []):
             code = r[i["代號"]].strip()
@@ -160,59 +248,103 @@ def tpex_day(day):
             if len(code) == 4 and code.isdigit() and c:  # 只收一般股票
                 o, h, l = (num(r[i[k]]) for k in ["開盤", "最高", "最低"])
                 quotes[code] = (r[i["名稱"]].strip(), o or c, h or c, l or c, c)
+    if not found_quote_table:
+        return None
     return quotes, (tpex_pe(day) if quotes else {})
 
 
 def tpex_pe(day):
     j = get_json(f"{TPEX}peQryDate?date={day.strftime('%Y/%m/%d')}&response=json")
     time.sleep(2)
+    if not j or j.get("stat") != "ok":
+        return None
     out = {}
+    found_table = False
     for tb in (j or {}).get("tables", []):
         f = [x.strip() for x in tb.get("fields", [])]
         if "股票代號" in f and "本益比" in f:
-            for r in tb.get("data", []):
+            found_table = True
+            rows = tb.get("data", [])
+            # 正常全市場資料有數百筆；過短的回應視為截斷或格式異常，留待重試。
+            if not isinstance(rows, list) or len(rows) < 200:
+                return None
+            for r in rows:
                 pe = num(r[f.index("本益比")])
                 if pe and pe > 0:
                     out[r[f.index("股票代號")].strip()] = pe
-    return out
+    return out if found_table else None
 
 
 def load_json(path, default):
+    if not os.path.exists(path):
+        return default
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return default
-
-
-def save_json(path, obj):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, separators=(",", ":"))
+            value = json.load(f)
+    except (OSError, ValueError) as e:
+        raise RuntimeError(f"{path} 存在但無法讀取有效 JSON，保留原檔並停止覆寫：{e}") from e
+    if not isinstance(value, dict) or not isinstance(value.get("s"), dict):
+        raise RuntimeError(f"{path} 結構不完整，保留原檔並停止覆寫。")
+    return value
 
 
 def update_otc(today):
     os.makedirs(OTC, exist_ok=True)
     keep = set()
+    pending = []
     for (y, m) in months_back(today, 3):
         name = f"{y}-{m:02d}.json"
         keep.add(name)
         path = os.path.join(OTC, name)
-        mo = load_json(path, {"n": {}, "s": {}, "done": []})
+        mo = load_json(path, {"n": {}, "s": {}, "done": [], "pe_done": []})
+        # 舊版沒有獨立記錄本益比是否抓成功；以有實際 PE 值的日期作為已完成，其餘日期會重抓。
+        if "pe_done" not in mo:
+            pe_days = {r[0] for rows in mo.get("s", {}).values() for r in rows if len(r) > 5 and r[5] is not None}
+            mo["pe_done"] = sorted(pe_days)
         changed = False
         d = dt.date(y, m, 1)
         while d.month == m and d <= today:
-            if d.weekday() < 5 and d.day not in mo["done"]:
-                got = tpex_day(d)
-                if got is not None:
-                    quotes, pes = got
-                    for code, (nm, o, h, l, c) in quotes.items():
-                        mo["n"][code] = nm
-                        mo["s"].setdefault(code, []).append([d.day, o, h, l, c, pes.get(code)])
-                    # 今天還沒資料可能是還沒公布，下次再試；以前的日子沒資料就是休市
-                    if quotes or d < today:
-                        mo["done"].append(d.day)
+            if d.weekday() < 5:
+                has_quotes = any(any(len(row) > 0 and row[0] == d.day for row in rows)
+                                 for rows in mo.get("s", {}).values())
+                needs_quotes = d.day not in mo["done"]
+                needs_pe = has_quotes and d.day not in mo["pe_done"]
+                if needs_quotes:
+                    got = tpex_day(d)
+                    if got is None:
+                        pending.append(f"{d} 行情端點失敗")
+                    else:
+                        quotes, pes = got
+                        for code, (nm, o, h, l, c) in quotes.items():
+                            mo["n"][code] = nm
+                            rows = mo["s"].setdefault(code, [])
+                            rows[:] = [r for r in rows if r[0] != d.day]
+                            rows.append([d.day, o, h, l, c, pes.get(code) if pes is not None else None])
+                        if quotes or d < today:
+                            mo["done"] = sorted(set(mo["done"]) | {d.day})
+                            changed = True
+                        else:
+                            pending.append(f"{d} 行情尚未公布")
+                        if quotes and pes is not None:
+                            mo["pe_done"] = sorted(set(mo["pe_done"]) | {d.day})
+                            changed = True
+                        elif quotes:
+                            pending.append(f"{d} 本益比端點失敗")
+                        print("otc", d, len(quotes), "檔", "PE", "ok" if pes is not None or not quotes else "pending")
+                elif needs_pe:
+                    pes = tpex_pe(d)
+                    if pes is None:
+                        pending.append(f"{d} 本益比端點失敗")
+                    else:
+                        for code, rows in mo["s"].items():
+                            for row in rows:
+                                if row[0] == d.day:
+                                    while len(row) < 6:
+                                        row.append(None)
+                                    row[5] = pes.get(code)
+                        mo["pe_done"] = sorted(set(mo["pe_done"]) | {d.day})
                         changed = True
-                    print("otc", d, len(quotes), "檔")
+                        print("otc PE retry", d, len(pes), "檔")
             d += dt.timedelta(days=1)
         if changed:
             for rows in mo["s"].values():
@@ -224,21 +356,36 @@ def update_otc(today):
 
     # 本益比歷史：每季一天，兩年 8 個點；每季重建一次
     hp = os.path.join(OTC, "pe-hist.json")
-    hist = load_json(hp, {})
+    hist = load_json(hp, {"s": {}})
     tag = f"{today.year}Q{(today.month - 1) // 3 + 1}"
-    if hist.get("built") != tag:
+    if hist.get("schema") != 2 or hist.get("built") != tag:
         s = {}
-        for (y, m) in months_back(today, 24)[3::3]:
+        complete = True
+        for (y, m) in months_back(today, 24)[::3]:
             d = dt.date(y, m, 15)
-            for _ in range(7):  # 遇到假日往後找
-                pes = tpex_pe(d) if d.weekday() < 5 else {}
-                if pes:
+            sample_ok = False
+            for _ in range(10):  # 假日、尚未公告或暫時逾時時往後找交易日
+                if d.weekday() < 5:
+                    pes = tpex_pe(d)
+                    if pes is None:
+                        d += dt.timedelta(days=1)
+                        continue
+                    sample_ok = True
                     break
                 d += dt.timedelta(days=1)
+            if not sample_ok:
+                complete = False
+                pending.append(f"PE 歷史樣本 {y}-{m:02d} 未抓齊")
+                continue
             for code, pe in pes.items():
                 s.setdefault(code, []).append(pe)
             print("otc pe-hist", d, len(pes), "檔")
-        save_json(hp, {"built": tag, "s": s})
+        if complete:
+            save_json(hp, {"schema": 2, "built": tag, "s": s})
+        else:
+            print("::error::上櫃 PE 歷史尚未抓齊，保留舊檔並於下次重試。")
+
+    return pending
 
 
 if __name__ == "__main__":
