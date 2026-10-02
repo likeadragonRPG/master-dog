@@ -335,6 +335,7 @@ STOCKS['2330'].bars=TSEED;
 const KEY='mdog-multi-v3';
 function median(a){const b=[...a].sort((x,y)=>x-y),h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2;}
 const DPE={'2330':26,'2454':22,'3037':25,'2408':10};
+const FEATURED={'3189':{name:'景碩',mkt:'twse'},'8046':{name:'南電',mkt:'twse'},'2327':{name:'國巨',mkt:'twse'},'8299':{name:'群聯',mkt:'otc'}};
 function newState(c){const m=STOCKS[c],last=m.rows[m.rows.length-1],pes=m.rows.filter(r=>r[2]>0).map(r=>r[1]/r[2]);
   return {mode:'pe',eps:last[2],pe:DPE[c],maN:20,near:m.near,far:m.far,lots:m.lots,core:m.core,cost:'',held:null,
     bars:m.bars.map(([d,o,h,l,c])=>({d,o,h,l,c})),trades:[],range:0,lt:{peMode:'median',pe:'',fwd:'',scale:c==='2330'?'lin':'log',span:60,upd:[]}};}
@@ -714,7 +715,7 @@ function syncForm(){F.forEach(k=>{$(k).value=S[k];});syncMode();$('lPeMode').val
 function switchStock(c){if(!STOCKS[c])return;ALL.cur=c;S=ALL.st[c];syncForm();persist();showTab(ALL.tab);}
 syncForm();showTab(ALL.tab==='long'?'long':'daily');
 // ===== 自選股票：網頁直接向證交所抓資料（證交所 rwd API 允許跨網站讀取） =====
-const MAXN=8;
+const MAXN=12;
 // 證交所有流量限制：所有請求排隊，每次間隔 2 秒
 let twseQ=Promise.resolve();
 function twse(path){const run=twseQ.then(async()=>{const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),20000);
@@ -809,7 +810,7 @@ let refreshing=false;
 async function refreshAll(){if(refreshing)return;refreshing=true;try{let any=await refreshDefaults();for(const c of ALL.list)if(ALL.custom[c])any=(await refreshCustom(c))||any;
   if(any){S=ALL.st[ALL.cur];syncForm();showTab(ALL.tab);}}finally{refreshing=false;}}
 function removeStock(c){if(ALL.list.length<=1)return;const nm=STOCKS[c].name;
-  if(ALL.custom[c]){if(!confirm(`確定移除 ${nm}？這檔的設定和紀錄會一起刪掉。`))return;delete ALL.custom[c];delete ALL.st[c];delete STOCKS[c];}
+  if(ALL.custom[c]){if(!confirm(`確定移除 ${nm}？這檔的設定和紀錄會一起刪掉。`))return;delete ALL.custom[c];delete ALL.st[c];delete STOCKS[c];if(FEATURED[c]){if(!ALL.featuredSeen)ALL.featuredSeen={};ALL.featuredSeen[c]=true;}}
   ALL.list=ALL.list.filter(x=>x!==c);persist();addMsg(`已移除 ${nm}。`);
   if(ALL.cur===c)switchStock(ALL.list[0]);else renderPicker();renderManage();}
 function renderManage(){
@@ -831,7 +832,13 @@ async function loadOfficialData(){if(dataLoading)return false;dataLoading=true;l
   try{const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const D=await r.json();
     if(!D||!D.stocks||!/^\d{4}-\d{2}-\d{2}$/.test(D.updated||''))throw new Error('資料格式不完整');
     for(const c of DEF)if(!D.stocks[c]||!Array.isArray(D.stocks[c].bars)||!D.stocks[c].bars.length)throw new Error(`缺少 ${c} 的 K 線`);
-    const sig=JSON.stringify([D.updated,D.health,DEF.map(c=>{const d=D.stocks[c],b=d.bars[d.bars.length-1];return[c,b,d.fund];})]);
+    if(!ALL.featuredSeen)ALL.featuredSeen={};
+    Object.entries(FEATURED).forEach(([c,m])=>{const d=D.stocks[c],bars=d&&d.bars,rows=d&&d.rows;if(ALL.featuredSeen[c]||ALL.list.includes(c)||!bars||!bars.length||!rows||!rows.length||ALL.list.length>=MAXN)return;
+      const last=bars[bars.length-1],eps=d.fund&&d.fund.eps||rows[rows.length-1][2]||0,name=d.name||m.name;
+      ALL.custom[c]={name,pe:null,mkt:m.mkt,ym:last[0].slice(0,7),close:last[4],eps};
+      STOCKS[c]={name,method:'pe',near:10,far:20,lots:0,core:0,custom:true,rows,bars};DPE[c]=null;
+      ALL.st[c]=newState(c);ALL.st[c].mode='ma';ALL.st[c].epsAuto=true;ALL.list.push(c);ALL.featuredSeen[c]=true;});
+    const sig=JSON.stringify([D.updated,D.health,[...DEF,...Object.keys(FEATURED)].map(c=>{const d=D.stocks[c],b=d&&d.bars&&d.bars[d.bars.length-1];return[c,b,d&&d.fund];})]);
     ALL.dataStatus='ok';ALL.sourceWarnings=D.health&&Array.isArray(D.health.warnings)?D.health.warnings:[];ALL.marketStatus=D.health&&D.health.market||null;
     if(sig!==dataSignature){dataSignature=sig;
       Object.keys(STOCKS).forEach(c=>{const d=D.stocks&&D.stocks[c];if(!d)return;

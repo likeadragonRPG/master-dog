@@ -1,10 +1,11 @@
-"""每天收盤後由 GitHub Actions 執行：抓四檔股票的每日股價與最新本益比，更新 data.json。
+"""每天收盤後由 GitHub Actions 執行：抓上市股票每日股價與最新本益比，更新 data.json。
 只用 Python 內建模組，不需要安裝任何套件。"""
 import json, os, time, urllib.request, datetime as dt
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data.json")
-CODES = ["2330", "2454", "3037", "2408"]
+CODES = ["2330", "2454", "3037", "2408", "3189", "8046", "2327"]
+STOCK_NAMES = {"3189": "景碩", "8046": "南電", "2327": "國巨"}
 UA = {"User-Agent": "Mozilla/5.0 (master-dog updater)", "Accept": "application/json"}
 TW = dt.timezone(dt.timedelta(hours=8))
 
@@ -129,10 +130,10 @@ def update_twse(data, today):
         validate_bars(code, s["bars"])
         print(code, "bars:", len(s["bars"]), "last:", s["bars"][-1])
 
-    # 四檔正常交易股票日期不應分歧。偵測單一 API 回舊資料或漏抓。
+    # 上市股票日期不應分歧。偵測單一 API 回舊資料或漏抓。
     latest = {c: data["stocks"][c]["bars"][-1][0] for c in CODES}
     if len(set(latest.values())) != 1:
-        raise RuntimeError(f"四檔最後交易日不一致，取消發布：{latest}")
+        raise RuntimeError(f"上市股票最後交易日不一致，取消發布：{latest}")
     market_day = twse_is_trading_day(today)
     if market_day is True and any(day != today.isoformat() for day in latest.values()):
         raise RuntimeError(f"證交所確認今天有交易，但個股資料仍停在舊日期：{latest}；取消發布並等待下次重試。")
@@ -169,13 +170,19 @@ def update_twse(data, today):
         s = data["stocks"][code]
         last = s["bars"][-1]
         ym = last[0][:7]
-        rows = s["rows"]
-        prev = rows[-1]
-        eps = s.get("fund", {}).get("eps", prev[2])
+        rows = s.setdefault("rows", [])
+        prev = rows[-1] if rows else None
+        eps = s.get("fund", {}).get("eps", (prev[2] if prev else 0))
         new = [ym, last[4], eps]
         if s["method"] == "pb":
-            new.append(s.get("fund", {}).get("bps", prev[3] if len(prev) > 3 else None))
-        if rows[-1][0] == ym:
+            new.append(s.get("fund", {}).get("bps", prev[3] if prev and len(prev) > 3 else None))
+        if not rows:
+            # 新增追蹤股第一次更新時，以本次回補到的各月收盤建立起始資料。
+            month_last = {}
+            for bar in s["bars"]:
+                month_last[bar[0][:7]] = bar[4]
+            rows.extend([[month, close, eps] for month, close in sorted(month_last.items())[-72:]])
+        elif rows[-1][0] == ym:
             rows[-1] = new
         elif rows[-1][0] < ym:
             rows.append(new)
@@ -196,6 +203,11 @@ def update_twse(data, today):
 def main():
     with open(DATA, encoding="utf-8") as f:
         data = json.load(f)
+    # 新加入的上市股第一次執行前先建立空殼，更新成功後才會公開到 data.json。
+    for code, name in STOCK_NAMES.items():
+        data["stocks"].setdefault(code, {
+            "name": name, "method": "pe", "rows": [], "bars": [], "fund": {}
+        })
     today = dt.datetime.now(TW).date()
     errors = []
 
@@ -208,6 +220,8 @@ def main():
     # OTC 與 TWSE 分開執行；其中一邊失敗，不會丟掉另一邊已成功的資料。
     try:
         pending = update_otc(today)
+        sync_featured_otc(data)
+        save_json(DATA, data)
         if pending:
             errors.append("TPEx 尚有未完成日期或本益比歷史，會保留重試資格：" + ", ".join(pending[:12]))
             print(f"::error::{errors[-1]}")
@@ -286,6 +300,47 @@ def load_json(path, default):
     if not isinstance(value, dict) or not isinstance(value.get("s"), dict):
         raise RuntimeError(f"{path} 結構不完整，保留原檔並停止覆寫。")
     return value
+
+
+def sync_featured_otc(data):
+    """把群聯最近三個月的櫃買日線複製到共用 data.json，讓新訪客直接看得到。"""
+    code = "8299"
+    months = []
+    for y, m in months_back(dt.datetime.now(TW).date(), 3):
+        path = os.path.join(OTC, f"{y}-{m:02d}.json")
+        if not os.path.exists(path):
+            continue
+        month = load_json(path, {})
+        name = month.get("n", {}).get(code)
+        if name:
+            months.append((f"{y}-{m:02d}", name, month.get("s", {}).get(code, [])))
+    if not months:
+        raise RuntimeError("櫃買資料中找不到群聯（8299），保留既有 data.json 並等待重試。")
+
+    months.sort(key=lambda item: item[0])
+    bars = []
+    rows = []
+    eps = None
+    for ym, name, records in months:
+        valid = [r for r in records if len(r) >= 5 and r[4] and r[4] > 0]
+        valid.sort(key=lambda r: r[0])
+        for day, o, h, l, close, *rest in valid:
+            bars.append([f"{ym}-{day:02d}", o, h, l, close])
+            pe = rest[0] if rest else None
+            if pe and pe > 0:
+                eps = round(close / pe, 2)
+        if valid:
+            last = valid[-1]
+            pe = last[5] if len(last) > 5 else None
+            month_eps = round(last[4] / pe, 2) if pe and pe > 0 else (eps or 0)
+            rows.append([ym, last[4], month_eps])
+    if not bars:
+        raise RuntimeError("群聯（8299）櫃買資料沒有有效日線，保留既有 data.json 並等待重試。")
+    data["stocks"][code] = {
+        "name": months[-1][1], "method": "pe", "rows": rows[-72:],
+        "bars": bars[-400:], "fund": {"date": bars[-1][0], "eps": eps or 0},
+        "market": "otc",
+    }
 
 
 def update_otc(today):
