@@ -389,12 +389,15 @@ def update_otc(today):
                             mo["done"] = sorted(set(mo["done"]) | {d.day})
                             changed = True
                         else:
-                            pending.append(f"{d} 行情尚未公布")
+                            # 今天還沒收盤／還沒公布，或今天休市：不算失敗，下次執行自動再抓
+                            print(f"otc {d} 今天的行情還沒有資料（未公布或休市），下次再抓")
                         if quotes and pes is not None:
                             mo["pe_done"] = sorted(set(mo["pe_done"]) | {d.day})
                             changed = True
-                        elif quotes:
+                        elif quotes and d < today:
                             pending.append(f"{d} 本益比端點失敗")
+                        elif quotes:
+                            print(f"otc {d} 今天的本益比還沒公布，下次再抓")
                         print("otc", d, len(quotes), "檔", "PE", "ok" if pes is not None or not quotes else "pending")
                 elif needs_pe:
                     pes = tpex_pe(d)
