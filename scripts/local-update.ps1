@@ -11,6 +11,7 @@ function Log($m) { "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" | Out-File $lo
 $py = (Get-Command python -ErrorAction SilentlyContinue).Source
 if (-not $py) { $py = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe' }
 $env:PYTHONIOENCODING = 'utf-8'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8  # 讀 Python 的 UTF-8 輸出，紀錄才不會變亂碼
 Set-Location $repo
 Log '開始更新'
 

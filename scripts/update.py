@@ -401,7 +401,10 @@ def update_otc(today):
                         print("otc", d, len(quotes), "檔", "PE", "ok" if pes is not None or not quotes else "pending")
                 elif needs_pe:
                     pes = tpex_pe(d)
-                    if pes is None:
+                    if pes is None and d == today:
+                        # 櫃買中心本益比常比行情晚公布（實測 15:40 還沒有），今天抓不到不算失敗
+                        print(f"otc {d} 今天的本益比還沒公布，下次再抓")
+                    elif pes is None:
                         pending.append(f"{d} 本益比端點失敗")
                     else:
                         for code, rows in mo["s"].items():
