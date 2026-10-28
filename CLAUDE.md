@@ -149,6 +149,7 @@ python3 scripts/update.py       # 手動更新 data.json（需要能連到 twse.
 - **本機定時更新（2026-10-12 起）**：GitHub 排程實測每天延遲 7～9 小時（14:47 的排程常到 21:30～24:00 才跑），上櫃股票因此晚一天。Fred 選擇在自己電腦上準時跑：
   - Windows 工作排程器「主人與狗 股價更新」，平日 14:50、15:40、17:30 執行 `C:\Users\USER\master-dog-bot\scripts\local-update.ps1`（錯過會在開機後補跑）。
   - `master-dog-bot` 是**專用 clone**，每次都 `reset --hard origin/main`，不要在裡面手動改東西；平常開發用 `C:\Users\USER\master-dog`。
+  - 工作的「多個執行個體」設為**結束舊的再開始新的**（COM `MultipleInstances=3`；PowerShell cmdlet 設不了）。2026-10-23 曾有一次跑到一半電腦睡著，卡到 10/26 才結束，期間的排程全被略過。
   - 紀錄在 `%LOCALAPPDATA%\master-dog\update.log`。腳本是 UTF-8 **含 BOM**（Windows PowerShell 5.1 需要）。
   - 電腦關機時就只剩 GitHub 排程，上市股票仍有網頁備援。
 - 「當天上櫃行情／本益比還沒公布」不再算失敗（之前排程延遲到隔天凌晨才跑，會每天誤報失敗）。
